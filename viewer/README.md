@@ -10,7 +10,9 @@ and legend previews, `route-probe.js` for directed paths and Route Journey,
 `focus.js` for semantic selection, relationships, reachability and shared flow tokens,
 `export.js` for export menus, serialization, images, cards, clipboard and WebM,
 `export-cleanup.js` for its private SVG clone cleanup, and
-`template.source.html` for the rest of the Viewer.
+`template.source.html` for the rest of the Viewer (including the
+`Archify.drilldown` descend/ascend/handshake IIFE itself, which stays inline
+rather than as its own fragment).
 `archify/assets/template.html` is the committed
 generated artifact, consumed unchanged by all five renderers and the installed
 Skill. These maintainer sources live outside the packaged `archify/` directory.
@@ -938,6 +940,218 @@ Route/Reach validation, finite-dimension checks, receipts, errors, menu behavior
 rasterization, clipboard and recording remain owned by Export. Its existing
 callers use the same paths and return fields. Tests exercise final browser exports;
 isolated clone tests supplement them for restoration and idempotence.
+
+## Drilldown contract
+
+`Archify.drilldown` (`template.source.html`) initializes near the end of the
+classic-script scope, after Focus, Semantic Lens, Route Probe, Intent Trace,
+Presentation and Guided Views exist. Every rendered diagram runs the same
+module; an ordinary (non-bundle) diagram's early return leaves only the pure
+handshake/model helpers (`validateHandshake`, `resolveChildFile`,
+`applyProjection`, `buildStaleCardModel`, `fillStaleCard`, `isSafeChildFile`,
+`locateChipModel`, `crumbCurrentText`, `paintInsideBadge`) installed and
+registers no DOM listener. `archify/references/drilldown-bundles.md` "Reader
+behavior" is the reading-order companion to this section.
+
+- **Local state vs. absolute depth.** Each viewer tracks `level` (0/1: does
+  this document itself currently have its own child open) independently of
+  `myDepth` (0 at the entry, incremented once per hop from the subtree the
+  parent hands down). `html[data-drilldown-level="1"]` and
+  `html[data-drilldown-open="true"]` both carry the local-open meaning and are
+  set and cleared together; `data-drilldown-level` is kept for compatibility
+  with existing callers and CSS. `html[data-drilldown-depth]` is written once,
+  from the parent's hello, and is informational only — nothing in the runtime
+  branches on it except the ascend-request depth arithmetic described below.
+- **Recursive descend.** `descend(componentId)` no longer refuses merely
+  because the current document is itself nested; it only refuses when this
+  document already has its own child open (`active()`), or when
+  `myDepth + 1 >= max_depth` (`belowMaxDepth()`) — a defensive ceiling in
+  addition to the tree's own natural bound, since a diagram's marks are drawn
+  from its own JSON at render time with no knowledge of the bundle's overall
+  `max_depth`. `syncPassport`'s Descend control and `drillFor()` (see below)
+  enforce the same ceiling and edge identity, so a mark or button that
+  shouldn't work never silently no-ops through a different door.
+- **Subtree distribution and its own validation.** The entry's embedded
+  manifest is normative only for the entry itself. Every
+  `archify:bundle-hello` a parent sends to its own child also carries
+  `subtree: {entry, depth, max_depth, diagrams, drilldowns}` — built by
+  walking the parent's own manifest from the child's id down, so a
+  grandchild's hello, in turn, carries a smaller subtree rooted at itself.
+  `readManifest()` prefers an embedded script (only ever true at the entry)
+  and otherwise returns this received subtree. A leaf child's subtree is not
+  empty: `diagrams` still carries the leaf's own manifest row (`byId[id]` for
+  its own id), only `drilldowns` is empty, and that empty `drilldowns` is
+  what keeps it from ever offering a further descend. A hello's `subtree`,
+  when present, is shape-validated
+  (`validateSubtreeShape`) before it is accepted at all: every `diagrams[]`
+  entry's `id`/`file`/`spec_sha256` and every `drilldowns[]` row's
+  `parent`/`component`/`child` must have the expected format, and
+  `depth < max_depth` must hold. An invalid subtree is rejected outright —
+  no ack is sent, so the parent's own handshake simply times out and shows
+  its own stale card, rather than this document silently running on a
+  malformed hand-down. `drillFor(componentId, childId)` matches the full
+  `(parent, component, child)` triple — `parent` being this document's own
+  diagram id (`myOwnDiagramId()`, `readManifest().entry`) and `childId` the
+  node's own baked `data-drilldown-child` annotation — not `component` alone.
+  A component id reused by a different diagram in the bundle can never
+  resolve to the wrong row, and neither can a row whose declared `child`
+  names a diagram other than the one the node itself already points to; a
+  mismatch on any of the three is a missing row (stale), never a load of the
+  wrong file.
+- **Navigation sessions are mandatory, not best-effort.** `descend()` assigns
+  a new `session` (a per-document monotonic counter) to `current` and
+  includes it in the hello; the child echoes it back on every message it
+  originates (`bundle-ack`, `drilldown-escape`, `drilldown-crumb`,
+  `drilldown-ascend-done`) as `helloSession`. Every one of those message
+  types, plus `drilldown-ascend-request`, requires a numeric `session` that
+  exactly matches the receiver's own current session — a message with no
+  `session` field at all is rejected exactly like one with the wrong value;
+  there is no legacy "absent session, accept anyway" path. This is what makes
+  a delayed or forged ack/escape/crumb from an already-superseded descent
+  inert regardless of whether it is missing a session or merely stale.
+  `drilldown-ascend-request`/`drilldown-ascend-done` additionally carry a
+  `requestId` (a second, ascend-specific monotonic counter): a document only
+  acts on an `ascend-done` whose `requestId` matches the one it most recently
+  sent, and `back()`/a new `handleAscendRequest` call both cancel the
+  previous request's pending settle timer outright — its timeout is not a
+  fixed 200ms but `ASCEND_SETTLE_STEP_MS` (250ms) times
+  `max(1, max_depth - myDepth)`, so a deeper ascend gets a longer window —
+  (`cancelPendingAscend()`, storing the real timer id) rather than only
+  clearing a callback reference —
+  a superseded request's timer literally cannot fire once cancelled, and even
+  if it somehow did, the session/requestId/`current` checks below would still
+  reject its effect.
+- **`current` is cleared the instant `back()` starts, not after the ascend
+  animation.** `back()` captures what `reveal()` still needs in a local
+  `closing` variable and sets the module's `current` to `null` immediately,
+  before the ~170ms ascend transition even begins. Every message handler that
+  requires `current` (ack, escape, crumb, ascend-done) therefore already sees
+  "nothing to attach to" for the whole ascending window, without needing a
+  state check of its own. `reveal()` itself checks `current !== null` (not a
+  captured session) to detect whether a new `descend()` superseded it while
+  ascending, and does nothing in that case — the new descent already owns the
+  host/frame/focus.
+- **Readiness is ACK-only, and the state string never lies about it.**
+  `data-drilldown-state` moves `descending` → (ack) `open` → `ascending` →
+  (removed) — a strict superset of the CSS-transition-only
+  `data-drilldown-anim` attribute (`descending`/`ascending`/removed), which
+  the ~170ms timer touches so the transition class ends on schedule.
+  `data-drilldown-state` itself stays `descending` for as long as the ack
+  takes, however long that is — it is never cleared or changed by a timer.
+  This is also the mechanism, not just readiness signalling: `onChildMessage`
+  only calls `finishHandshake` for a `bundle-ack` while `data-drilldown-state`
+  reads `descending`, so an ack that arrives while `ascending`/`stale`, or a
+  duplicate ack once already `open`, is rejected outright — it never
+  re-triggers `finishHandshake` or resets `chainBelow`. A `drilldown-crumb`
+  update is similarly only accepted while `open`. Only `finishHandshake` (a
+  successful ack) writes `open`; only a failed/mismatched/timed-out handshake
+  writes `stale`. `frame.hidden` still only clears after that same successful
+  ack.
+- **Two message receivers, never three parties.** `onMessage` dispatches by
+  `event.source`, not by whether this document happens to be nested: a
+  message from `window.parent` (only when `nestedChild()`) goes to
+  `onParentMessage` (`bundle-hello`, `locate-projection`,
+  `drilldown-ascend-request`); a message from `frame.contentWindow` (only
+  when this document currently has its own iframe) goes to `onChildMessage`
+  (`bundle-ack`, `drilldown-escape`, `drilldown-crumb`,
+  `drilldown-ascend-done`). Both can be true for the same intermediate
+  viewer at once — that is what makes recursion work — but a document never
+  reads a message whose source is neither its own parent nor its own direct
+  child; a root and a grandchild never address each other directly.
+- **Breadcrumb aggregation.** Only the root paints `.archify-drilldown-crumb`
+  and `.archify-drilldown-silhouette`; CSS hides both on any document carrying
+  `data-bundle-nested="true"`, and `buildSilhouette` skips its clone entirely
+  when nested. Whenever a document's own handshake settles (open or stale) or
+  its `chainBelow` changes, it calls `publishChain()`: a nested document
+  posts `archify:drilldown-crumb {session, chain}` to its own parent, where
+  `chain` is its own rung (`{id, title, componentLabel}` describing its own
+  descent) followed by whatever its child last reported; the root instead
+  renders the full chain as buttons (ascend to that rung's depth) with the
+  last rung as the non-interactive current one. `back()` publishes an
+  immediate, optimistic empty chain to the parent before its own 170ms
+  ascend animation completes, matching the crumb's previous immediate-clear
+  behavior.
+- **Ascend-to-depth.** `ascendTo(toDepth)` (root's own entry point, also
+  called by a crumb rung's click) and the internal `handleAscendRequest`
+  forward `archify:drilldown-ascend-request {toDepth, session, requestId}`
+  down one hop at a time — a document with its own open child always forwards
+  the request further before deciding whether it itself must `back()` (only
+  when `myDepth + 1 > toDepth`, and only if `current` is still the same
+  descent the request was issued for), so the innermost level always
+  finishes closing first. A forwarding document waits for its child's
+  matching `archify:drilldown-ascend-done` or its own timeout, whichever
+  comes first, before acting on its own closure — and that timeout is not
+  one flat duration everywhere: it is `ASCEND_SETTLE_STEP_MS * Math.max(1,
+  maxDepth - myDepth)` (currently `250 * max(1, maxDepth - myDepth)` ms,
+  `maxDepth` read from the manifest's own `max_depth`, defaulting to `2` if
+  unavailable), so a level further from the tree's own maximum depth waits
+  proportionally longer than a level closer to it. This is sized from the
+  manifest's static depth accounting, deliberately not from `chainBelow` —
+  `chainBelow` can still be empty while a deeper handshake is in flight and
+  has not yet reported anything upward, which previously left two levels
+  both waiting the same (minimum) timeout with no guaranteed order between
+  them. Without this scaling, two independent flat (or chainBelow-derived)
+  fallbacks can expire in the wrong order and close an outer level before
+  its own child has actually finished closing what is below it; scaling by
+  `maxDepth - myDepth` guarantees the innermost level's own fallback always
+  expires first even if every ascend-done in the chain were lost and even
+  before any crumb has propagated, since each level out is at least one full
+  step longer than the level directly below it by construction. Both the
+  message and timeout paths are guarded by the session/requestId/`current` checks
+  described above, so a request superseded by a `back()`/new `descend()` in
+  the meantime cannot close the wrong descent even if its timer were somehow
+  not cancelled. `closeInnermost()` is `ascendTo` applied to one less than the deepest depth
+  this document currently knows about (`myDepth + chainBelow.length`); with
+  nothing open below the direct child it is exactly equivalent to `back()`.
+- **Escape ladder.** A single Escape/Backspace still closes one level. Focus
+  inside the innermost open document exhausts that document's own ladder
+  before it forwards `drilldown-escape` to its direct parent, unchanged in
+  shape from before N-depth support. Focus at any level that itself has an
+  open child now resolves the drilldown-active branch of the keydown ladder
+  to `closeInnermost()` rather than a plain `back()`, so pressing Escape with
+  focus on the root while a grandchild is open closes only that grandchild,
+  not the root's own direct child. `back()`'s `reveal()` also restores focus
+  to `[data-node-id=componentId]` (`{preventScroll: true}`, matching the
+  pattern used by Focus/Radar/Route Probe/Node Finder) once geometry and
+  scroll are restored.
+- **Constraints preserved, one loosened.** `data-bundle-nested="true"` still
+  hides the entire `.toolbar`, and still hides Route Probe, Semantic Radar,
+  Semantic Lens, Node Finder and the Diagram Guide button inside
+  `.diagram-nav` — but no longer hides `.diagram-nav` itself, so the zoom
+  in/out/reset controls keep working at any nested depth. `#btn-drilldown-descend`
+  is never hidden merely for being nested (`syncPassport`'s `allow` no longer
+  checks `nestedChild()`, only this document's own `level`), and
+  `onMarkClick` no longer refuses nested documents either — both are what let
+  a user descend a second and third time from inside an already-nested
+  viewer. Export, the SVG's own attributes, and the camera/zoom gesture
+  surface are unchanged; the new `data-drilldown-*`/`data-bundle-nested`
+  state lives only on `html`, so `export-cleanup.js`'s SVG-clone rules did
+  not need new entries.
+
+`drilldown-nested-browser.test.mjs` exercises three real, same-origin nested
+documents end to end: entry → child → grandchild descend gated on ACK; a
+three-rung root breadcrumb where the middle rung's click closes only the
+grandchild; an innermost-first Escape ladder with focus restored to the
+originating node (via a synthetic keydown on the target document — see the
+test's own note on why a real CDP keypress does not reliably cross two
+same-origin iframe boundaries in this harness); Escape with real focus on the
+root's own current breadcrumb rung closing only the innermost level; a
+corrupted grandchild identity producing a stale card at the intermediate
+level while the root's chain still names the whole attempted path; a forged,
+stale-session ack from a superseded descent being ignored; a session-less ack
+and a duplicate already-open ack both rejected without disturbing the
+descent or its crumb; `back()` immediately followed by a redescend
+surviving an earlier pending ascend-settle that a fixed bug would otherwise
+have let close the wrong (reopened) session; a root rung click ascending two
+levels at once with the innermost level verified to close no later than the
+outer one; switching between two sibling children showing the correct
+breadcrumb for whichever is currently open; and closing a stale grandchild
+attempt returning the intermediate level to normal while the root's crumb
+for its still-open child survives, dropping only the failed attempt's own
+rung. `drilldown-{viewer,keyboard,stale,mark,locate}.test.mjs` and
+`bundle-message-origin-browser.test.mjs` cover the single-level handshake,
+keyboard ladder, stale-card rendering, mark rendering, locate projection and
+cross-origin/message-boundary guarantees this contract keeps.
 
 For required browser, output and package evidence, follow
 [Contributing](../CONTRIBUTING.md#local-setup-and-verification).

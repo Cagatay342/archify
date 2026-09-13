@@ -249,6 +249,7 @@ class PipeCdp {
 export function chromeVisualBrowserArgs(profileRoot, {
   env = process.env,
   getuid = typeof process.getuid === 'function' ? () => process.getuid() : null,
+  extraArgs = [],
 } = {}) {
   const args = [
     '--headless=new',
@@ -267,6 +268,10 @@ export function chromeVisualBrowserArgs(profileRoot, {
     '--disable-renderer-backgrounding',
     '--force-device-scale-factor=1',
     `--user-data-dir=${profileRoot}`,
+    // Test-only escape hatch (e.g. --allow-file-access-from-files for
+    // file:// nested-iframe evidence); production visual-check callers never
+    // pass this, so the default flag set is unchanged.
+    ...extraArgs,
     'about:blank',
   ];
   const rootUser = typeof getuid === 'function' && getuid() === 0;
@@ -294,10 +299,11 @@ export class ChromeVisualBrowser {
     env = process.env,
     getuid = typeof process.getuid === 'function' ? () => process.getuid() : null,
     spawnImpl = spawn,
+    extraArgs = [],
   } = {}) {
     this.profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-visual-check-profile-'));
     this.stderr = '';
-    const args = chromeVisualBrowserArgs(this.profileRoot, { env, getuid });
+    const args = chromeVisualBrowserArgs(this.profileRoot, { env, getuid, extraArgs });
     this.child = spawnImpl(chromePath, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
     this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', (chunk) => {

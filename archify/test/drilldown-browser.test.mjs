@@ -101,7 +101,7 @@ async function assertGeometryRestore(browser, artifactPath, { width, height }) {
     };
   })()`);
   assert.equal(during.ok, true, `${width}x${height}: descend failed`);
-  assert.equal(during.state, 'level1', `${width}x${height}: handshake`);
+  assert.equal(during.state, 'open', `${width}x${height}: handshake`);
   assert.equal(during.currents.length, 1, `${width}x${height}: breadcrumb current`);
   assert.doesNotMatch(during.currents[0], /^(.+) · \1$/, `${width}x${height}: breadcrumb must not repeat an equal label`);
   // file:// iframes hide contentDocument; inspect the child frame over CDP.
@@ -109,13 +109,18 @@ async function assertGeometryRestore(browser, artifactPath, { width, height }) {
     nested: document.documentElement.getAttribute('data-bundle-nested'),
     toolbarDisplay: document.querySelector('.toolbar')
       ? getComputedStyle(document.querySelector('.toolbar')).display : '',
-    navDisplay: document.querySelector('.diagram-nav')
-      ? getComputedStyle(document.querySelector('.diagram-nav')).display : '',
+    finderDisplay: document.querySelector('#btn-node-finder')
+      ? getComputedStyle(document.querySelector('#btn-node-finder')).display : '',
+    zoomInDisplay: document.querySelector('[data-view="in"]')
+      ? getComputedStyle(document.querySelector('[data-view="in"]')).display : '',
+    descendHidden: document.querySelector('#btn-drilldown-descend')
+      ? document.querySelector('#btn-drilldown-descend').hidden : null,
   })`);
   assert.ok(childChrome, `${width}x${height}: child frame ${during.childSrc}`);
   assert.equal(childChrome.nested, 'true', `${width}x${height}: child handshake marks nested`);
   assert.equal(childChrome.toolbarDisplay, 'none', `${width}x${height}: nested toolbar hidden`);
-  assert.equal(childChrome.navDisplay, 'none', `${width}x${height}: nested PATH/MAP/LENS hidden`);
+  assert.equal(childChrome.finderDisplay, 'none', `${width}x${height}: nested finder/route/lens/guide hidden`);
+  assert.notEqual(childChrome.zoomInDisplay, 'none', `${width}x${height}: nested zoom controls must keep working`);
   assert.equal(during.inside, '3', `${width}x${height}: parent-box count`);
   assert.equal(during.badge, '3', `${width}x${height}: parent-box badge`);
   assert.equal(during.childMinHeight, '80vh', `${width}x${height}: child height must differ from parent canvas`);

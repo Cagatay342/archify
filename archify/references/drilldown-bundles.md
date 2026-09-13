@@ -244,47 +244,97 @@ mismatch, the top-level code is promoted to `bundle/child-stale`.
 
 **Descending.** Single click keeps its existing one-hop focus meaning. Descending happens through
 the named `Descend` control in the Semantic Passport, or by activating the drilldown mark on the
-node. Keyboard activation works because the node is already a focusable button.
+node. Keyboard activation works because the node is already a focusable button. A child that is
+itself not a leaf offers the same control for its own components, so a diagram can be descended
+into a second and a third time — a viewer being nested no longer disables its own descend.
 
 For scripts and headless readers, `Archify.drilldown.descend(componentId)` starts a descent from
-an entry-diagram node. Pass the node's semantic ID (`data-node-id`), not the child diagram ID.
-The Viewer resolves the child through the node's annotation and the bundle manifest.
+the current diagram's own node. Pass the node's semantic ID (`data-node-id`), not the child
+diagram ID. The Viewer resolves the child through the node's annotation and its own manifest — the
+entry's embedded copy at level 0, or the subtree its parent handed down at any deeper level.
 
-The call returns a boolean synchronously. `false` means no descent started: the Viewer is
-nested, the node has no drilldown child, or no readable embedded manifest is available. `true`
-means the request was handled; it may start loading a child or immediately show a stale card
-for an invalid bundle reference. It does not confirm that the iframe loaded or its handshake
-succeeded. The frame remains hidden until the expected diagram ID and spec digest pass the
-handshake. Neither `active()` nor `data-drilldown-state="level1"` is a readiness signal.
-Use `Archify.drilldown.back()` to return to the parent.
+The call returns a boolean synchronously. `false` means no descent started: this document already
+has a child of its own open, `myDepth + 1 >= max_depth` (a defensive ceiling on top of the tree's
+own natural bound), or the clicked node carries no `data-drilldown-child` annotation or no manifest
+(embedded or inherited) is available yet. A missing `(parent, component, child)` row matching this
+document's own diagram id, the clicked component, and the node's own baked `data-drilldown-child`
+annotation all three at once does **not** return `false` — a component id reused by a different
+diagram, or a row whose declared child names a different diagram than the node's own annotation,
+shows the stale card (`showStale('missing-row')` or `showStale('missing-child')`) and still returns
+`true`. `true` means the request was handled; it may start loading a child
+or immediately show a stale card for an invalid bundle reference. It does not confirm that the
+iframe loaded or its handshake succeeded. The frame remains hidden until the expected diagram ID
+and spec digest pass the handshake. Neither `active()` nor `data-drilldown-state="open"` before
+a completed handshake is a readiness signal — the readiness state moves `descending` → (ack)
+`open` → `ascending` → (removed), and only a successful ack ever writes `open`, with or without
+reduced motion; `data-drilldown-state` itself never changes for any other reason; a separate,
+purely cosmetic `data-drilldown-anim` attribute tracks the CSS transition window instead. Use
+`Archify.drilldown.back()` to return to the direct parent, or `Archify.drilldown.ascendTo(depth)`
+to close every level below a given absolute depth (the entry is depth 0) in one call — used by
+clicking an earlier breadcrumb rung; the innermost open level always finishes closing first.
 
-Bundle click/load listeners are registered only for an entry with an embedded manifest, after
-the document has parsed. A nested child still receives handshake messages without its own
-manifest or Locate payload. Ordinary Viewers do not register bundle message listeners.
+Bundle click/load/message listeners are registered for an entry with an embedded manifest, and
+for any diagram rendered with a `child` bundle role, whether or not it is currently sitting
+inside an iframe — that static role (not runtime nesting) is what lets a child register its own
+descend handling once its parent's subtree arrives. Ordinary Viewers, with neither an embedded
+manifest nor a bundle role, still register nothing.
 Offline `file:` documents have opaque origins, so their `postMessage` transport uses `"*"`;
 receivers validate the actual source window, bundle role and message shape, and the parent
 verifies the child's ID and spec digest. The wildcard is not permission for an unrelated
-embedding page to turn an ordinary Viewer into a bundle child.
+embedding page to turn an ordinary Viewer into a bundle child. A hello's handed-down subtree is
+itself shape-validated (every diagram's id/file/spec digest format, every drilldown row's
+parent/component/child, `depth < max_depth`) before it is accepted; an invalid one is silently
+not acked, so the parent's own handshake times out and shows its own stale card rather than the
+child running on a malformed hand-down. Every navigation message — ack, escape, breadcrumb update,
+and the ascend-request/ascend-done pair — carries the originating descent's session number, and it
+is mandatory: a message with no session field is rejected exactly like one with the wrong value,
+there is no "absent session, accept anyway" fallback. An ack is additionally accepted only while
+this document's own state is `descending` (never while `ascending`/`stale`, and never a duplicate
+once already `open`, so a stray or replayed ack cannot re-run the handshake or reset the
+breadcrumb chain beneath this level), and a breadcrumb update only while `open`. The ascend-request/
+ascend-done pair also carries a request id, so a superseded ascend's own settle — its fallback timer
+is actively cancelled, not merely disconnected, whenever a newer request or a `back()`/new descend
+supersedes it — cannot act on a session it no longer belongs to even in a race. That fallback timer
+is not one flat duration at every level: a level waits `250 * max(1, maxDepth - myDepth)` ms
+(`maxDepth` from the manifest's own `max_depth`, defaulting to `2` if unavailable) before giving up
+on its own child's `ascend-done` and closing it on the timeout alone — sized from each level's
+static distance from the tree's own maximum depth, not from how many hops have been reported
+upward so far, since that count can still be empty while a deeper handshake is in flight and has
+not yet reported anything. A flat, unscaled timeout at every level, or one derived from what has
+been reported so far, cannot guarantee the innermost level's own fallback always expires first, and
+did not in an observed case. A document only
+ever reads a message from its own direct parent or its own direct child — a root and a grandchild
+never address each other.
 
-**Level 1.** A breadcrumb reads `<entry title> › <component label> · <child title>`; its first
-rung is a button that ascends, and only the current rung carries `aria-current="page"`. Below it,
-a 96 px silhouette of the parent — structure only, no text, sigils, beacons or brand marks — marks
-the descended component in Verified Cyan. The child fills the canvas as a complete viewer with its
-own Passport, focus, lens, route probe, finder, theme, preset, and export.
+**Any nested level.** A breadcrumb is drawn once, at the root, as the full chain from the entry
+down to whichever level is currently deepest: `<entry title> › <rung 1> › <rung 2> › …`, each
+non-final rung a button that ascends to that depth, and only the final rung carrying
+`aria-current="page"`. Every level below the root reports its own one-hop contribution up to its
+own direct parent; an intermediate level neither draws its own breadcrumb nor its own silhouette
+(both are hidden by `data-bundle-nested`) — only the root ever shows the 96 px silhouette,
+structure only, no text, sigils, beacons or brand marks, marking the descended component in
+Verified Cyan. Each child, at whatever depth, fills the canvas as a complete viewer with its own
+Passport, focus, lens, route probe, finder, theme, preset, and export.
 
 **Returning.** The parent SVG never leaves the DOM or the layout: it stays in flow with
 `visibility: hidden` while the child is overlaid, and the adaptive reader's re-measure is frozen
 while descended, so no fit runs and `back()` simply reveals the same geometry. Window and canvas scroll
-offsets are captured on descend and restored on ascend. `Esc` ascends, `Backspace` is a synonym,
-and the breadcrumb's first rung does the same. The drilldown rung sits at the outer end of the
-existing Escape ladder, so transient states inside the child are cleared first. A child that has
-exhausted its own ladder forwards the keystroke to the parent, so `Esc` works with focus inside
-the child.
+offsets are captured on descend and restored on ascend, and focus returns to the node that was
+originally descended from. `Esc` ascends one level at a time, `Backspace` is a synonym, and a
+breadcrumb rung's click ascends directly to that rung's depth. The drilldown rung sits at the
+outer end of the existing Escape ladder, so transient states inside the child are cleared first.
+Whichever level has focus — including the root itself, even while a grandchild is the deepest
+open level — its Escape closes only the innermost open level, one hop, never more than one per
+keystroke. A level that has exhausted its own ladder forwards the keystroke to its own direct
+parent, so `Esc` works with focus at any depth.
 
-**Disabled at level 1.** Presentation Stage is unavailable while nested. A nested child starts in
-Still and does not auto-play a trace. Focus, lens, route probe, intent trace, presentation, and
+**Disabled while nested.** Presentation Stage is unavailable while nested. A nested child starts
+in Still and does not auto-play a trace. Focus, lens, route probe, intent trace, presentation, and
 guided views are cleared before descending and are not restored afterwards — what is restored is
-geometry, not temporary state.
+geometry, not temporary state. The Route Probe, Semantic Radar, Semantic Lens, Node Finder and
+Diagram Guide controls are hidden while nested; the zoom in/out/reset controls and the Descend
+control are not — both work at any nested depth, since descending further is exactly what a
+nested viewer needs to keep offering.
 
 **Motion.** Descend and ascend run at roughly 170 ms and switch instantly under
 `prefers-reduced-motion`.

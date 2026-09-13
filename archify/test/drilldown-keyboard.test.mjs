@@ -16,7 +16,12 @@ function dispatch(key, descended, field = false, focused = true, nested = false)
     preset: inactive, semanticLens: inactive, guide: inactive, radar: inactive,
     routeProbe: inactive, intentTrace: inactive,
     focus: { active: () => focused, clear: () => calls.push('clear-focus') },
-    drilldown: { active: () => descended, back: () => calls.push('back') },
+    drilldown: {
+      active: () => descended,
+      back: () => calls.push('back'),
+      closeInnermost: () => calls.push('back'),
+      escapeToParent: () => calls.push('archify:drilldown-escape'),
+    },
     presentation: inactive,
   };
   const window = { parent: { postMessage: (message) => calls.push(message.type) } };

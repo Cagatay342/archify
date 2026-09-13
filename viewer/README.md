@@ -730,12 +730,85 @@ zoom/reset controls and the initial viewBox. The existing `apply()`,
 Views already exist; checks for later modules and deferred callers remain needed.
 The shared `viewerText` helper stays in classic-script scope.
 
-The interface remains `zoomIn`, `zoomOut`, `reset`, `reveal`, `centerAt`,
-`logicalViewport`, `sync`, and `state`. `state()` returns a copy of scale/x/y/mode;
-the modes are overview, manual and semantic. Zoom and Reset return undefined;
-`centerAt` returns a boolean, `logicalViewport` can return null, and `sync`
-delegates to `reveal` or returns false. Manual Reset interrupts callers, whereas
-`reset({ automatic: true })` stops camera motion without the manual takeover path.
+The interface remains `zoomIn`, `zoomOut`, `zoomAt`, `reset`, `reveal`, `centerAt`,
+`logicalViewport`, `sync`, `state`, `onChange`, `offChange`, `on`, and `off`.
+`state()` returns a copy of scale/x/y/mode; the modes are overview, manual and
+semantic. Zoom and Reset return undefined; `centerAt` returns a boolean,
+`logicalViewport` can return null, and `sync` delegates to `reveal` or returns
+false. Manual Reset interrupts callers, whereas `reset({ automatic: true })`
+stops camera motion without the manual takeover path.
+
+`zoomAt(nextScale, clientX, clientY, { snap })` scales around a caller-supplied
+viewport point instead of the box's own visual center, using `svgOrigin()` — a
+static content-box origin derived from `container`'s own `getBoundingClientRect`,
+border/padding and `scrollLeft`/`scrollTop` (RTL's negative `scrollLeft` included),
+never a live `getBoundingClientRect` of the transformed, transitioning SVG — so
+repeated calls within one input burst (two pinch fingers moving in the same
+frame, a fast wheel-up immediately followed by another) stay exact regardless of
+where the 0.18s CSS transition currently is. `snap: true` rounds to the existing
+quarter-step 1–3 clamp, matching `zoomIn`/`zoomOut`/`+`/`-`; omitted or falsy, the
+scale is continuous. `zoom(next)` is `zoomAt` anchored on the box's own center
+and always snaps, preserving byte-identical quarter-step behavior for the
+existing controls; it stays correct while the container itself is scrolled
+(the narrow wide-diagram mode's `+`/`-`/`0`), which the pre-`zoomAt` center-only
+math also happened not to need.
+
+Wheel (`deltaY`, exponential factor, `ctrlKey` trackpad-pinch multiplier) and
+two-finger touch pinch (pointer-event distance ratio, fixed gesture-start
+midpoint) both call `zoomAt` without snapping, so the diagram zooms continuously
+between 1 and 3 around the cursor or the pinch midpoint. Wheel and pinch defer to
+the existing manual-takeover contract: any scale change calls `interruptCamera`
+first, same as `zoomIn`/`zoomOut`/drag. A wheel gesture that cannot change scale
+(for example, zooming out at the 1x floor) does not call `preventDefault`, so
+page scrolling passes through. Both gestures no-op — no camera change, no event —
+inside the mobile-contained mode (`window.innerWidth <= 720` with
+`data-wide-diagram`); the container's own `touch-action: auto` there is a native
+scroll/pinch affordance for the browser, not a substitute for this JS guard, which
+`beginPinch`/`updatePinch` check independently of `onWheel`.
+
+Pinch pointer capture is acquired for both touch ids at gesture start and held
+for the gesture's lifetime (not released early); `pointerup`, `pointercancel` and
+`lostpointercapture` all route through the same cleanup, which drops the lifted
+id, releases its capture, and — once fewer than two ids remain — ends the pinch.
+A single-finger drag is scoped to the `pointerId` that started it; a second touch
+arriving while scale is above 1 cancels that drag before the pinch takes over,
+and a third touch during an active pinch never starts a new drag (the pan-start
+handler refuses any touch pointerdown while at least one touch id is already
+tracked). When a pinch ends because one finger lifted, the remaining finger does
+not resume panning — a drag can only begin on its own `pointerdown`, and the
+surviving finger's was already consumed when the pinch began.
+
+Every wheel tick and pinch update emits `{ phase, source, id }` through
+`on('gesture', cb)`/`off('gesture', cb)`, so a caller can
+tell a continuing physical gesture from a fresh one. `source` is `'wheel'` or
+`'pinch'` (`'buttons'`/`'keyboard'` are reserved, not yet emitted). Wheel ticks
+within 150ms of each other share one monotonically-assigned `id` and its
+`'start'`/`'move'` phases; 150ms of silence emits `'end'` for that id and the
+next tick starts a new one. Pinch phases are the gesture's own lifecycle:
+`'start'` on the first `beginPinch`, `'move'` on every `updatePinch`, and
+`'end'`/`'cancel'` when it stops (`'cancel'` for `pointercancel`/
+`lostpointercapture`, `'end'` otherwise). A wheel gesture that cannot change
+scale, and a pinch that cannot go below the 1x floor, both emit `minZoomOut`
+through `on`/`off` (not `onChange`/`offChange`) with `{ source, gestureId }`
+instead of changing the camera; a consumer such as an ascend trigger consumes that event.
+
+`onChange(cb)`/`offChange(cb)` subscribe to every `apply()`, receiving
+`{ scale, x, y, mode, detail, transitioning }` (`detail` is `detailLevel()`'s
+current value). Every `apply()` fires the callback immediately with
+`transitioning: true` for the just-set target state; a second call with
+`transitioning: false` follows once that state has visually settled — on the
+SVG's own `transitionend` for `transform`, or a 200ms fallback when no CSS
+transition runs (reduced motion, or a JS-eased transaction that sets
+`transition: none` itself) — unless a newer `apply()` supersedes this one
+first, in which case this `apply()`'s settled callback never fires at all
+(`clearTransitionSettle()`, called at the top of `notifyChange()` for the new
+`apply()`, cancels the still-pending watch outright rather than letting it
+run alongside the new one).
+Only the latest `apply()`'s settle watch is armed; a superseding `apply()` before
+settlement cancels the prior watch instead of stacking listeners. `on(event, cb)`/
+`off(event, cb)` are the generic form used for other camera events (`minZoomOut`,
+`gesture`). Listener errors are caught per-callback and never interrupt `apply()`
+or other subscribers; there is no unsubscribe-all.
 
 `reveal` returns a transaction or false, with branch-specific side effects.
 Desktop empty/unknown targets can return before changing the camera. At widths

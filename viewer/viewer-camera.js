@@ -15,6 +15,15 @@
       var clipFrame = 0;
       var resizeFrame = 0;
       var autoScrollUntil = 0;
+      var changeListeners = [];
+      var eventListeners = { minZoomOut: [], gesture: [] };
+      var touchPoints = {};
+      var pinch = null;
+      var wheelGestureId = 0;
+      var wheelGestureTimer = null;
+      var pinchGestureId = 0;
+      var transitionSettleHandler = null;
+      var transitionSettleTimer = null;
 
       var viewBox = svg.viewBox && svg.viewBox.baseVal;
 
@@ -131,6 +140,63 @@
         }
         sample();
       }
+      function emitChangeSnapshot(transitioning) {
+        var snapshot = {
+          scale: state.scale, x: state.x, y: state.y, mode: state.mode,
+          detail: detailLevel(), transitioning: transitioning
+        };
+        changeListeners.slice().forEach(function (cb) {
+          try { cb(snapshot); } catch (_) {}
+        });
+      }
+      function clearTransitionSettle() {
+        if (transitionSettleHandler) {
+          svg.removeEventListener('transitionend', transitionSettleHandler);
+          transitionSettleHandler = null;
+        }
+        if (transitionSettleTimer) {
+          clearTimeout(transitionSettleTimer);
+          transitionSettleTimer = null;
+        }
+      }
+      function notifyChange() {
+        if (!changeListeners.length) { clearTransitionSettle(); return; }
+        emitChangeSnapshot(true);
+        clearTransitionSettle();
+        var settle = function () {
+          clearTransitionSettle();
+          emitChangeSnapshot(false);
+        };
+        transitionSettleHandler = function (event) {
+          if (event.target === svg && event.propertyName === 'transform') settle();
+        };
+        svg.addEventListener('transitionend', transitionSettleHandler);
+        transitionSettleTimer = setTimeout(settle, 200);
+      }
+      function emit(event, payload) {
+        var list = eventListeners[event];
+        if (!list || !list.length) return;
+        list.slice().forEach(function (cb) {
+          try { cb(payload); } catch (_) {}
+        });
+      }
+      function onChange(cb) {
+        if (typeof cb === 'function' && changeListeners.indexOf(cb) < 0) changeListeners.push(cb);
+      }
+      function offChange(cb) {
+        var index = changeListeners.indexOf(cb);
+        if (index >= 0) changeListeners.splice(index, 1);
+      }
+      function on(event, cb) {
+        if (!eventListeners[event] || typeof cb !== 'function') return;
+        if (eventListeners[event].indexOf(cb) < 0) eventListeners[event].push(cb);
+      }
+      function off(event, cb) {
+        var list = eventListeners[event];
+        if (!list) return;
+        var index = list.indexOf(cb);
+        if (index >= 0) list.splice(index, 1);
+      }
       function apply() {
         clamp();
         svg.style.transform = 'translate(' + state.x + 'px,' + state.y + 'px) scale(' + state.scale + ')';
@@ -144,6 +210,7 @@
         if (Archify.viewerChromeLayout && typeof Archify.viewerChromeLayout.schedule === 'function') {
           Archify.viewerChromeLayout.schedule();
         }
+        notifyChange();
       }
       function sampleRenderedState() {
         var transform = '';
@@ -235,20 +302,40 @@
           Archify.routeProbe.pauseJourney({ preserveElapsed: true, reason: reason || 'manual' });
         }
       }
+      function svgOrigin() {
+        var containerRect = container.getBoundingClientRect();
+        var style = getComputedStyle(container);
+        return {
+          left: containerRect.left + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0) - container.scrollLeft,
+          top: containerRect.top + (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.paddingTop) || 0) - container.scrollTop
+        };
+      }
+      function zoomAt(nextScale, clientX, clientY, options) {
+        options = options || {};
+        var previous = state.scale;
+        var next = options.snap
+          ? Math.max(1, Math.min(3, Math.round(nextScale * 4) / 4))
+          : Math.max(1, Math.min(3, nextScale));
+        if (next === previous) return next;
+        var origin = svgOrigin();
+        var hasPoint = typeof clientX === 'number' && typeof clientY === 'number';
+        var targetX = hasPoint ? (clientX - origin.left) : (svg.clientWidth || 1) / 2;
+        var targetY = hasPoint ? (clientY - origin.top) : (svg.clientHeight || 1) / 2;
+        var contentX = (targetX - state.x) / previous;
+        var contentY = (targetY - state.y) / previous;
+        state.scale = next;
+        state.x = targetX - contentX * next;
+        state.y = targetY - contentY * next;
+        apply();
+        return next;
+      }
       function zoom(next, options) {
         options = options || {};
         if (options.manual !== false) interruptCamera();
-        var previous = state.scale;
-        next = Math.max(1, Math.min(3, Math.round(next * 4) / 4));
-        if (next === previous) return;
-        var centerX = (svg.clientWidth || 1) / 2;
-        var centerY = (svg.clientHeight || 1) / 2;
-        var contentX = (centerX - state.x) / previous;
-        var contentY = (centerY - state.y) / previous;
-        state.scale = next;
-        state.x = centerX - contentX * next;
-        state.y = centerY - contentY * next;
-        apply();
+        var origin = svgOrigin();
+        var centerX = origin.left + (svg.clientWidth || 1) / 2;
+        var centerY = origin.top + (svg.clientHeight || 1) / 2;
+        zoomAt(next, centerX, centerY, { snap: true });
       }
       function reset(options) {
         options = options || {};
@@ -467,7 +554,7 @@
         }
       }
       function onPointerEnd(event) {
-        if (!drag) return;
+        if (!drag || event.pointerId !== drag.pointerId) return;
         var moved = drag.moved;
         drag = null;
         container.classList.remove('is-panning');
@@ -477,19 +564,110 @@
           setTimeout(function () { container.removeAttribute('data-just-panned'); }, 80);
         }
       }
+      function touchIds() { return Object.keys(touchPoints); }
+      function touchDistance(a, b) {
+        var dx = a.x - b.x;
+        var dy = a.y - b.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+      function beginPinch() {
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var ids = touchIds();
+        if (ids.length !== 2) return;
+        var a = touchPoints[ids[0]];
+        var b = touchPoints[ids[1]];
+        var dist = touchDistance(a, b);
+        if (!(dist > 0)) return;
+        if (drag) {
+          drag = null;
+          container.classList.remove('is-panning');
+        }
+        ids.forEach(function (id) { try { container.setPointerCapture(Number(id)); } catch (_) {} });
+        interruptCamera();
+        pinchGestureId += 1;
+        pinch = {
+          ids: ids,
+          startDist: dist,
+          startScale: state.scale,
+          lastDist: dist,
+          midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+          gestureId: pinchGestureId
+        };
+        emit('gesture', { phase: 'start', source: 'pinch', id: pinch.gestureId });
+      }
+      function updatePinch() {
+        if (!pinch) return;
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var a = touchPoints[pinch.ids[0]];
+        var b = touchPoints[pinch.ids[1]];
+        if (!a || !b) return;
+        var dist = touchDistance(a, b);
+        if (!(dist > 0)) return;
+        var closing = dist < pinch.lastDist - 0.5;
+        pinch.lastDist = dist;
+        var ratio = dist / pinch.startDist;
+        var desired = pinch.startScale * ratio;
+        var previous = state.scale;
+        var next = zoomAt(desired, pinch.midpoint.x, pinch.midpoint.y);
+        if (closing && next === previous && previous <= 1) {
+          emit('minZoomOut', { source: 'pinch', gestureId: pinch.gestureId });
+        }
+        emit('gesture', { phase: 'move', source: 'pinch', id: pinch.gestureId });
+      }
+      function endTouchPointer(event, reason) {
+        if (event.pointerType !== 'touch') return;
+        delete touchPoints[event.pointerId];
+        try { container.releasePointerCapture(event.pointerId); } catch (_) {}
+        if (pinch && (!touchPoints[pinch.ids[0]] || !touchPoints[pinch.ids[1]])) {
+          var endedGesture = pinch.gestureId;
+          pinch = null;
+          emit('gesture', { phase: reason === 'cancel' ? 'cancel' : 'end', source: 'pinch', id: endedGesture });
+        }
+      }
+      function tickWheelGesture() {
+        if (wheelGestureTimer) {
+          clearTimeout(wheelGestureTimer);
+          emit('gesture', { phase: 'move', source: 'wheel', id: wheelGestureId });
+        } else {
+          wheelGestureId += 1;
+          emit('gesture', { phase: 'start', source: 'wheel', id: wheelGestureId });
+        }
+        wheelGestureTimer = setTimeout(function () {
+          wheelGestureTimer = null;
+          emit('gesture', { phase: 'end', source: 'wheel', id: wheelGestureId });
+        }, 150);
+        return wheelGestureId;
+      }
+      function onWheel(event) {
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var gestureId = tickWheelGesture();
+        var deltaY = event.deltaY;
+        if (event.deltaMode === 1) deltaY *= 16;
+        else if (event.deltaMode === 2) deltaY *= 100;
+        var factor = Math.exp(-deltaY * (event.ctrlKey ? 0.01 : 0.0015));
+        var previous = state.scale;
+        var next = Math.max(1, Math.min(3, previous * factor));
+        if (next === previous) {
+          if (deltaY > 0 && previous <= 1) emit('minZoomOut', { source: 'wheel', gestureId: gestureId });
+          return;
+        }
+        event.preventDefault();
+        interruptCamera();
+        zoomAt(next, event.clientX, event.clientY);
+      }
 
       inBtn.addEventListener('click', function () { zoom(state.scale + 0.25); });
       outBtn.addEventListener('click', function () { zoom(state.scale - 0.25); });
       resetBtn.addEventListener('click', reset);
       container.addEventListener('pointerdown', function (event) {
-        if (state.scale <= 1 || event.button !== 0 || event.target.closest('.diagram-nav, .focus-chip, .node-finder, .diagram-guide, .overview-map, .route-probe, .semantic-lens') || event.target.closest('[data-node-id]') || event.target.closest('[data-relationship-hit-key]')) return;
+        if (state.scale <= 1 || event.button !== 0 || (event.pointerType === 'touch' && touchIds().length >= 1) || event.target.closest('.diagram-nav, .focus-chip, .node-finder, .diagram-guide, .overview-map, .route-probe, .semantic-lens') || event.target.closest('[data-node-id]') || event.target.closest('[data-relationship-hit-key]')) return;
         interruptCamera();
-        drag = { startX: event.clientX, startY: event.clientY, x: state.x, y: state.y, moved: false };
+        drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: state.x, y: state.y, moved: false };
         container.classList.add('is-panning');
         try { container.setPointerCapture(event.pointerId); } catch (_) {}
       });
       container.addEventListener('pointermove', function (event) {
-        if (!drag) return;
+        if (!drag || event.pointerId !== drag.pointerId) return;
         var dx = event.clientX - drag.startX;
         var dy = event.clientY - drag.startY;
         if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -499,6 +677,21 @@
       });
       container.addEventListener('pointerup', onPointerEnd);
       container.addEventListener('pointercancel', onPointerEnd);
+      container.addEventListener('lostpointercapture', onPointerEnd);
+      container.addEventListener('pointerdown', function (event) {
+        if (event.pointerType !== 'touch') return;
+        touchPoints[event.pointerId] = { x: event.clientX, y: event.clientY };
+        if (touchIds().length === 2) beginPinch();
+      });
+      container.addEventListener('pointermove', function (event) {
+        if (event.pointerType !== 'touch' || !(event.pointerId in touchPoints)) return;
+        touchPoints[event.pointerId] = { x: event.clientX, y: event.clientY };
+        if (pinch) updatePinch();
+      });
+      container.addEventListener('pointerup', function (event) { endTouchPointer(event, 'end'); });
+      container.addEventListener('pointercancel', function (event) { endTouchPointer(event, 'cancel'); });
+      container.addEventListener('lostpointercapture', function (event) { endTouchPointer(event, 'cancel'); });
+      container.addEventListener('wheel', onWheel, { passive: false });
       container.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', function () {
         if (resizeFrame) cancelAnimationFrame(resizeFrame);
@@ -516,11 +709,16 @@
       return {
         zoomIn: function () { zoom(state.scale + 0.25); },
         zoomOut: function () { zoom(state.scale - 0.25); },
+        zoomAt: zoomAt,
         reset: reset,
         reveal: reveal,
         centerAt: centerAt,
         logicalViewport: logicalViewport,
         sync: syncSemantic,
-        state: function () { return { scale: state.scale, x: state.x, y: state.y, mode: state.mode }; }
+        state: function () { return { scale: state.scale, x: state.x, y: state.y, mode: state.mode }; },
+        onChange: onChange,
+        offChange: offChange,
+        on: on,
+        off: off
       };
     })();

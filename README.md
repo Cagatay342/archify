@@ -32,6 +32,14 @@ Archify is a Node.js rendering and validation system for Cursor, Claude Code, Co
 npx skills add tt-a1i/archify -g
 ```
 
+> **This fork (`Cagatay342/archify`, branch `nested-drilldown`)** adds N-depth drilldown bundles, recursive descend, wheel/pinch zoom and opt-in zoom-dive, and makes whole-repository maps default to a recursive bundle. Install it instead of upstream with:
+>
+> ```bash
+> npx skills add https://github.com/Cagatay342/archify/tree/nested-drilldown -g -y --copy
+> ```
+>
+> Then, in any repository, ask your agent: "visualize this project's architecture with archify" — it authors the outside view, recurses into components that have real internal structure, and bundles the result (`archify bundle <dir>`). Serve the output directory over HTTP for three or more levels.
+
 Using Cursor? Open the [agent-aware quick start](https://tt-a1i.github.io/archify/start.html?agent=cursor&type=architecture) for exact global and project commands.
 
 **No repository is required:** describe the system in any agent chat.

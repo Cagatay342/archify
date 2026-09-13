@@ -16352,9 +16352,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       function reducedMotion() {
         return !!(reducedQuery && reducedQuery.matches);
       }
-      // Route Probe picking/result, Semantic Lens open and Presentation are
-      // deliberate, exclusive exploration modes — genuinely incompatible
-      // with an automatic descend. Intent Trace's own "active" node is
+      // Route Probe picking/result, Semantic Lens open and a playing guided
+      // story are deliberate, exclusive exploration modes — genuinely
+      // incompatible with an automatic descend. Presentation itself is not:
+      // it only hides chrome, and a reader zooming by hand on stage is
+      // exactly the audience a dive is for. Intent Trace's own "active" node is
       // just its ordinary 90ms fine-pointer hover preview, which is true
       // almost the entire time a real mouse is hovering the very node
       // being wheel-zoomed (the normal way a reader would trigger a dive):
@@ -16363,7 +16365,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       function blockingActive() {
         if (Archify.routeProbe && Archify.routeProbe.active && Archify.routeProbe.active()) return true;
         if (Archify.semanticLens && Archify.semanticLens.active && Archify.semanticLens.active()) return true;
-        if (Archify.presentation && Archify.presentation.active && Archify.presentation.active()) return true;
+        if (Archify.guidedViews && Archify.guidedViews.isPlaying && Archify.guidedViews.isPlaying()) return true;
         return false;
       }
       function drilldownOpenOrBusy() {

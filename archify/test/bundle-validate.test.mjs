@@ -196,14 +196,14 @@ test('validateBundle reports checksPassed === checkCount - 1 when one check fail
       assert.ok(error instanceof BundleError);
       assert.equal(error.details.checkCount, 10);
       assert.equal(error.details.checksPassed, error.details.checkCount - 1);
-      assert.ok(error.details.failures.some((item) => String(item).includes('bundle/child-mark')));
+      assert.ok(error.details.failures.some((item) => String(item).includes('bundle/leaf-mark')));
     }
   } finally {
     disposeBundleFixture(dir);
   }
 });
 
-test('validateBundle fails when a child HTML still has a drilldown mark', () => {
+test('validateBundle fails when a leaf HTML still has a drilldown mark', () => {
   const dir = stage();
   try {
     const htmlPath = path.join(dir, 'payments.html');
@@ -222,7 +222,7 @@ test('validateBundle fails when a child HTML still has a drilldown mark', () => 
       /<script id="archify-bundle-manifest" type="application\/json">[\s\S]*?<\/script>/,
       `<script id="archify-bundle-manifest" type="application/json">${manifestText}</script>`,
     ));
-    expectFailure(dir, 'bundle/child-mark');
+    expectFailure(dir, 'bundle/leaf-mark');
   } finally {
     disposeBundleFixture(dir);
   }

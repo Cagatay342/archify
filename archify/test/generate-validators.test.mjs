@@ -26,6 +26,7 @@ test('generated bundle validator is exported beside the five diagram validators'
     schema_version: 1,
     bundle_type: 'drilldown',
     entry: 'checkout',
+    max_depth: 2,
     diagrams: [{
       id: 'checkout',
       file: 'checkout.html',

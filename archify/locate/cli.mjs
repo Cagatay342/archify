@@ -332,25 +332,37 @@ function writeBundleProjection({
   if (!fs.readFileSync(entrySpecPath).equals(fs.readFileSync(mapPath))) {
     locateFail('locate/bundle-invalid', '--map does not match the manifest-bound entry specification.');
   }
+  const specPathById = new Map((manifest.diagrams || []).map((diagram) => [
+    diagram.id, path.join(bundleDir, diagram.file.replace(/\.html$/, '.json')),
+  ]));
+  const levelById = new Map((manifest.diagrams || []).map((diagram) => [diagram.id, diagram.level ?? 0]));
+  const links = [...(manifest.drilldowns || [])].sort((left, right) => (
+    (levelById.get(left.parent) ?? 0) - (levelById.get(right.parent) ?? 0)
+  ));
+  const effectiveOwnershipById = new Map([[manifest.entry, parentOwnership]]);
   const childReceipts = {};
-  for (const link of manifest.drilldowns || []) {
+  for (const link of links) {
     const diagram = (manifest.diagrams || []).find((item) => item.id === link.child);
     if (!diagram) locateFail('locate/bundle-incomplete', `Missing child diagram ${link.child}.`);
+    const parentSpecPath = specPathById.get(link.parent);
+    if (!parentSpecPath) locateFail('locate/bundle-incomplete', `Missing parent diagram ${link.parent}.`);
     const childMapPath = path.join(bundleDir, diagram.file.replace(/\.html$/, '.json'));
     const childOwnPath = defaultOwnershipPath(childMapPath);
     if (!fs.existsSync(childOwnPath)) locateFail('locate/bundle-incomplete', `Missing child ownership ${link.child}.`);
     const childMap = loadMap(childMapPath);
     const loaded = loadOwnership({ ownershipPath: childOwnPath, mapPath: childMapPath, map: childMap });
     if (!loaded.ownership.parent || loaded.ownership.parent.component !== link.component
-      || path.resolve(path.dirname(childOwnPath), loaded.ownership.parent.map) !== path.resolve(entrySpecPath)
-      || link.parent !== manifest.entry) {
-      locateFail('locate/bundle-incomplete', `Child parent binding does not match the entry link ${link.child}.`);
+      || path.resolve(path.dirname(childOwnPath), loaded.ownership.parent.map) !== path.resolve(parentSpecPath)) {
+      locateFail('locate/bundle-incomplete', `Child parent binding does not match the drilldown link ${link.child}.`);
     }
+    const parentEffective = effectiveOwnershipById.get(link.parent);
+    const effective = inheritParentExcluded(parentEffective, loaded.ownership);
+    effectiveOwnershipById.set(link.child, effective);
     childReceipts[link.child] = locateRange({
       base,
       head,
       map: childMap,
-      ownership: inheritParentExcluded(parentOwnership, loaded.ownership),
+      ownership: effective,
       changes,
       headTree,
       mapPath: path.basename(childMapPath),

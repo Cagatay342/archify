@@ -15,8 +15,18 @@ const cli = path.join(skillRoot, 'bin/archify.mjs');
 const manifest = {
   entry: 'checkout-platform',
   drilldowns: [{ parent: 'checkout-platform', component: 'payments', child: 'payments' }],
-  diagrams: [{ id: 'checkout-platform', file: 'checkout-platform.html' }],
+  diagrams: [
+    { id: 'checkout-platform', file: 'checkout-platform.html' },
+    { id: 'payments', file: 'payments.html' },
+  ],
 };
+
+// validateOwnershipSubset now derives identity from the sidecar file actually read, matched
+// against manifest.diagrams[] — so every direct call below passes a bundleDir + sidecarPath
+// consistent with the child sidecar's real identity ("payments"); no file on disk is read for it,
+// bundleDir is just a fixed fake absolute path used for string-level path.resolve.
+const FAKE_BUNDLE_DIR = '/bundle';
+const CHILD_SIDECAR_PATH = path.join(FAKE_BUNDLE_DIR, 'payments.ownership.json');
 
 function sidecar(overrides) {
   return {
@@ -31,7 +41,11 @@ function sidecar(overrides) {
 function sidecarsFor(testCase) {
   const parent = sidecar({
     excluded: testCase.parentExcluded,
-    components: [{ id: 'payments', globs: testCase.parentGlobs }],
+    // child_map is what lets "unified subset table through archify bundle --check" below root the
+    // walk at the entry (checkout-platform.ownership.json, per validateOwnershipSubset's root
+    // identity rule) and still reach payments.ownership.json for the same subset check the direct
+    // validateOwnershipSubset calls above exercise.
+    components: [{ id: 'payments', globs: testCase.parentGlobs, child_map: 'payments.json' }],
   });
   const child = sidecar({
     map: 'payments.json',
@@ -45,7 +59,7 @@ function sidecarsFor(testCase) {
 for (const testCase of OWNERSHIP_SUBSET_CASES) {
   test(`validateOwnershipSubset: ${testCase.name}`, () => {
     const { parent, child } = sidecarsFor(testCase);
-    const failures = validateOwnershipSubset(manifest, child, parent);
+    const failures = validateOwnershipSubset(manifest, child, parent, FAKE_BUNDLE_DIR, { sidecarPath: CHILD_SIDECAR_PATH });
     if (testCase.ok) {
       assert.deepEqual(failures, []);
     } else {
@@ -61,11 +75,14 @@ test('unified subset table through archify bundle --check', () => {
       const { parent, child } = sidecarsFor(testCase);
       fs.writeFileSync(path.join(dir, 'checkout-platform.ownership.json'), `${JSON.stringify(parent, null, 2)}\n`);
       fs.writeFileSync(path.join(dir, 'payments.ownership.json'), `${JSON.stringify(child, null, 2)}\n`);
-      const bytes = fs.readFileSync(path.join(dir, 'payments.ownership.json'));
+      // manifest.ownership must bind the ENTRY sidecar (validateOwnershipSubset's root identity is
+      // always the entry's own spec); payments.ownership.json is reached through checkout-platform's
+      // "payments" component child_map, same as any other walked child.
+      const bytes = fs.readFileSync(path.join(dir, 'checkout-platform.ownership.json'));
       const manifestPath = path.join(dir, 'manifest.json');
       const listed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       listed.ownership = {
-        file: 'payments.ownership.json',
+        file: 'checkout-platform.ownership.json',
         sha256: createHash('sha256').update(bytes).digest('hex'),
       };
       const manifestText = `${JSON.stringify(listed, null, 2)}\n`;
@@ -102,7 +119,7 @@ test('validateOwnershipSubset rejects an object-map components sidecar', () => {
     parent: { map: 'checkout-platform.json', component: 'payments' },
     components: { api: { globs: ['src/payments/api/**'] } },
   };
-  const failures = validateOwnershipSubset(manifest, child, parent);
+  const failures = validateOwnershipSubset(manifest, child, parent, FAKE_BUNDLE_DIR, { sidecarPath: CHILD_SIDECAR_PATH });
   assert.ok(failures.some((item) => item.includes('bundle/ownership-not-subset')));
 });
 
@@ -115,7 +132,7 @@ test('validateOwnershipSubset rejects archify/scripts/*.mjs as covering archify/
     parent: { map: 'checkout-platform.json', component: 'payments' },
     components: [{ id: 'scripts', globs: ['archify/scripts/**'] }],
   });
-  const failures = validateOwnershipSubset(manifest, child, parent);
+  const failures = validateOwnershipSubset(manifest, child, parent, FAKE_BUNDLE_DIR, { sidecarPath: CHILD_SIDECAR_PATH });
   assert.ok(
     failures.some((item) => item.includes('bundle/ownership-not-subset') && item.includes('scripts')),
     failures.join('\n'),

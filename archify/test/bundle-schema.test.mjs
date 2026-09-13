@@ -31,9 +31,15 @@ test('bundle schema rejects a missing entry', () => {
   assert.equal(validateBundle(manifest), false);
 });
 
-test('bundle schema rejects level 2', () => {
+test('bundle schema accepts level 2 (N-depth bundles can nest below level 1)', () => {
   const manifest = validManifest();
   manifest.diagrams[0].level = 2;
+  assert.equal(validateBundle(manifest), true, JSON.stringify(validateBundle.errors));
+});
+
+test('bundle schema rejects level 8 (above the 8-level depth cap)', () => {
+  const manifest = validManifest();
+  manifest.diagrams[0].level = 8;
   assert.equal(validateBundle(manifest), false);
 });
 

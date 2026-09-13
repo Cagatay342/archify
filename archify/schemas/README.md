@@ -155,14 +155,19 @@ The five diagram schemas reference `common.schema.json#/$defs/...`:
 ## Diagram bundles
 
 `bundle.schema.json` is the machine-readable contract for an identity-based
-drilldown bundle: one directory, one `manifest.json`, an entry diagram plus at
-most twelve same-directory children. Targets are diagram ids, never paths.
+drilldown bundle: one directory, one `manifest.json`, an entry diagram plus a
+tree of same-directory children up to eight levels deep. Each diagram may
+have at most twelve primary nodes. Targets are diagram ids, never paths.
 `diagrams[].file` is the only place a filename appears. `spec_sha256` hashes
 the sibling JSON bytes; `artifact_sha256` hashes the HTML bytes (entry hashes
-exclude the runtime `archify-bundle-manifest` script). `max_depth` is `2`.
-An architecture component may declare optional `drilldown` (a child diagram
-id); the manifest `drilldowns[]` table is the id→file resolution used by
-`archify bundle` and the viewer.
+exclude the runtime `archify-bundle-manifest` script). `max_depth` is an
+integer from `2` to `8`, set by the producer to one more than the deepest
+`diagrams[].level` (`0`–`7`) actually present. An architecture component may
+declare optional `drilldown` (a child diagram id) on any diagram in the
+bundle, not only the entry; the manifest `drilldowns[]` table is the
+parent/component/child resolution used by `archify bundle` and the viewer.
+The bundle is a tree: a diagram may be the `child` of at most one row, and a
+row may not target an ancestor of its own parent.
 
 Lifecycle state `type` is mode-specific (`start`/`active`/`waiting`/...) and
 stays in `lifecycle.schema.json`.

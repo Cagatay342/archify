@@ -308,9 +308,13 @@ test('bundle messages, repeated navigation and changed child files preserve thei
       const projected = await childState();
       assert.deepEqual(projected.projection, [['api','touched']]);
       assert.equal(projected.polluted, false); assert.equal(projected.injected, false); assert.deepEqual(projected.errors, []);
-      await messagesToEntry([{type:'archify:bundle-ack',id:'payments',specSha256:'a'.repeat(64)}], 'child');
-      const stale = await state(); assertStale(stale);
-      evidence.messages = {before,projected,stale};
+      // Faz 2 tur-2 (P1-a): once already open, a further ack is rejected
+      // outright (state is no longer "descending") rather than re-running
+      // the handshake into stale — duplicate/replay-ack immunity now takes
+      // priority over late mismatch detection, even with a correct session.
+      await messagesToEntry([{type:'archify:bundle-ack',id:'payments',specSha256:'a'.repeat(64),session:1}], 'child');
+      const afterDuplicateAck = await state(); assertLive(afterDuplicateAck);
+      evidence.messages = {before,projected,afterDuplicateAck};
       await back();
     });
 

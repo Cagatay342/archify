@@ -3,16 +3,20 @@
 Read this reference only when the user asks for a diagram whose components expand into their own
 diagrams, or asks about `archify bundle`. A single diagram never needs it.
 
-A drilldown bundle is one directory holding one entry diagram, up to twelve same-directory
-children, and a `manifest.json` that binds them by diagram id and content digest. Reading is
-descend-in-place: the parent shrinks to a breadcrumb and a silhouette, the child opens on the same
-canvas, and returning restores the parent's exact geometry and scroll position.
+A drilldown bundle is one directory holding one entry diagram, a tree of same-directory children
+(at most twelve per parent — the node cap applies per diagram, not to the bundle as a whole), and
+a `manifest.json` that binds them by diagram id and content digest. Reading is descend-in-place:
+the parent shrinks to a breadcrumb and a silhouette, the child opens on the same canvas, and
+returning restores the parent's exact geometry and scroll position.
 
 ## When to use it
 
 Use a bundle when one component of a map has enough internal structure to deserve its own diagram
 and the twelve-node cap makes inlining it dishonest. Keep a single diagram when the detail fits.
-Depth is fixed at two levels; a child cannot itself be a parent.
+Depth ranges from two levels up to eight; a child can itself declare its own drilldowns and become
+a parent, so the whole bundle forms a tree rooted at the entry. Three to four levels is typical —
+each extra level is a full nested viewer document, so go deeper only when the structure genuinely
+nests that far.
 
 ## Commands
 
@@ -57,6 +61,22 @@ docs/cases/archify-self/
 A child may be any of the five diagram types. The self-map uses a workflow child under an
 architecture entry.
 
+A bundle deeper than two levels is still one flat directory — a grandchild sits beside its parent
+and the entry, not in a subdirectory. Its `<id>.json` names a `drilldown` on one of the parent's
+own components, and its optional ownership sidecar's `parent` pointer names the parent diagram's
+spec, not the entry's:
+
+```
+checkout-platform.html               entry   (architecture, level 0)
+checkout-platform.json
+payments.html                        child   (architecture, level 1)
+payments.json                        components[].drilldown: "settlement" on one component
+settlement.html                      grandchild (architecture, level 2)
+settlement.json
+settlement.ownership.json            parent: { map: "payments.json", component: "psp" }
+manifest.json
+```
+
 ## Adding a drilldown child
 
 1. Author the child diagram JSON as an ordinary diagram, with its own coordinates and at most
@@ -92,30 +112,36 @@ canonical export and no tool rewrites delivered bytes to add it. The node group 
 {
   "schema_version": 1,
   "bundle_type": "drilldown",
-  "entry": "archify-self",
-  "max_depth": 2,
+  "entry": "checkout-platform",
+  "max_depth": 3,
   "diagrams": [
     {
-      "id": "render-pipeline",
-      "file": "render-pipeline.html",
-      "diagram_type": "workflow",
-      "title": "Render Pipeline",
-      "level": 1,
-      "node_count": 7,
+      "id": "settlement",
+      "file": "settlement.html",
+      "diagram_type": "architecture",
+      "title": "Card Network Settlement",
+      "level": 2,
+      "node_count": 3,
       "spec_sha256": "3d951943eab2…",
       "artifact_sha256": "ae93996cb6c3…"
     }
   ],
   "drilldowns": [
-    { "parent": "archify-self", "component": "renderers-shared", "child": "render-pipeline", "label": "Shared Renderer Runtime" }
+    { "parent": "checkout-platform", "component": "payments", "child": "payments", "label": "Payment Rail" },
+    { "parent": "payments", "component": "psp", "child": "settlement", "label": "Card Network" }
   ],
-  "ownership": { "file": "archify-self.ownership.json", "sha256": "f4d57bce1a2d…" }
+  "ownership": { "file": "checkout-platform.ownership.json", "sha256": "f4d57bce1a2d…" }
 }
 ```
 
-`max_depth` is always `2`. `diagrams` holds at most 13 entries — one entry at `level: 0` plus up
-to twelve children at `level: 1`. `drilldowns[]` is the id-to-file resolution table used by both
-the validator and the viewer; the diagram JSON only ever names an id.
+`max_depth` is an integer from `2` to `8`, set by the producer to one more than the deepest
+`diagrams[].level` actually present (the entry is always `level: 0`); a bundle with only direct
+children stays `max_depth: 2`, exactly as before N-depth support. `diagrams` has no upper bound
+on count, but every diagram still carries at most twelve primary nodes and `level` never exceeds
+`7`. `drilldowns[]` is the parent/component/child resolution table used by both the validator and
+the viewer; each row's `parent` is the id of whichever diagram in the bundle declares that
+component's `drilldown` — the entry for a level-1 child, a level-1 diagram for a level-2
+grandchild, and so on. The diagram JSON only ever names an id, never a path.
 
 The entry HTML embeds a byte-identical copy of the manifest as
 `<script id="archify-bundle-manifest" type="application/json">`, because a `file://` document
@@ -143,35 +169,59 @@ the schema, validation stops there. With a valid manifest it runs the remaining 
 collects their failures. The ten checks are:
 
 1. `manifest.json` exists, parses, and passes the schema.
-2. the entry exists in `diagrams[]` at `level: 0`, every other diagram is `level: 1`, and
-   `max_depth` is 2.
+2. the entry exists in `diagrams[]` at `level: 0`; every other diagram's `level` equals its
+   breadth-first depth from the entry along `drilldowns[]` (`bundle/child-level`); `max_depth`
+   equals one more than the deepest depth found (`bundle/max-depth`); a tree deeper than 8 levels
+   fails outright (`bundle/depth-exceeded`). The walk itself is depth-first, not breadth-first: in
+   a valid tree (a single parent per diagram) that gives the same `level` a breadth-first walk
+   would, since `level = parent's level + 1` along the one path that exists; in an invalid graph
+   (a shared child or a cycle, both rejected outright) `level` is whatever depth the walk first
+   discovered the diagram at, not necessarily the shortest path to it.
 3. `id` and `file` are unique, and each `file` is an existing same-directory HTML name.
 4. each HTML's `data-bundle-id`, `data-bundle-role`, and `data-bundle-spec-sha256` match the
    manifest.
 5. recomputed artifact and spec digests match the manifest.
 6. the entry embeds exactly one manifest copy, byte-identical to disk.
-7. every drilldown row: the parent is the entry, the component exists in the entry's semantic
-   collection, the child exists in `diagrams[]`, at most one child per component, no cycle, no
-   nesting.
+7. every drilldown row: the `parent` exists in `diagrams[]` (not necessarily the entry), the
+   `component` exists in that parent's semantic collection, the child exists in `diagrams[]`, at
+   most one child per `(parent, component)` pair. The whole table must form a tree: a diagram
+   reachable by more than one row is `bundle/drilldown-shared`, a row that targets an ancestor of
+   its own parent is `bundle/drilldown-cycle`, and a diagram unreachable from the entry is
+   `bundle/orphan`.
 8. every diagram has between 1 and 12 primary nodes.
-9. no child carries a drilldown mark — the second layer does not descend.
+9. only leaf diagrams (diagrams that declare no drilldown of their own) are checked for a stray
+   mark — a leaf's HTML must not carry `data-drilldown-child` (`bundle/leaf-mark`). An
+   intermediate diagram's HTML is expected to carry the mark for its own children and is not
+   inspected by this check.
 10. when a sidecar is listed: the file exists, its digest matches, it parses, and every child
     sidecar glob (component globs and `excluded`) is a subset of the parent component that
     declares the drilldown (`validateChildOwnershipSubset` via
-    `archify/bundle/diagram-bundle.mjs:126-133` and `:569-577`). Parent `excluded` is inherited
-    at locate projection time, not re-checked as a cover relation. The sidecar file, when
-    present, must be `<entryId>.ownership.json`.
+    `archify/bundle/diagram-bundle.mjs:126-133` and the recursive walk in `validateBundle`'s
+    ownership check). This walk follows every `child_map` pointer, however many levels deep, and
+    guards against a `child_map` that points back at one of its own ancestors
+    (`bundle/ownership-cycle`) instead of recursing forever. A `parent.component` shared by more
+    than one drilldown row (the same component id reused across different diagrams) must set
+    `parent.map` to disambiguate which row it binds to, or the sidecar fails
+    `bundle/ownership-not-subset` as ambiguous. Parent `excluded` is inherited at locate
+    projection time, not re-checked as a cover relation. The sidecar file, when present, must be
+    `<entryId>.ownership.json`.
 
 Failure codes are `bundle/entry-level`, `bundle/child-level`, `bundle/max-depth`,
-`bundle/duplicate-id`, `bundle/duplicate-file`, `bundle/file-path`, `bundle/file-missing`,
-`bundle/child-stale`, `bundle/embed-count`, `bundle/embed-mismatch`, `bundle/drilldown-parent`,
-`bundle/drilldown-component`, `bundle/drilldown-child`, `bundle/drilldown-duplicate`,
-`bundle/drilldown-cycle`, `bundle/drilldown-nested`, `bundle/node-cap`, `bundle/child-mark`,
-`bundle/ownership-missing`, `bundle/ownership-stale`, `bundle/ownership-parse`,
-`bundle/ownership-not-subset`. Manifest construction can also fail with `bundle/dir-missing`,
-`bundle/id-invalid`, `bundle/spec-missing`, `bundle/spec-parse`, `bundle/empty`,
-`bundle/entry-ambiguous`, `bundle/entry-missing`, `bundle/type-unknown`, `bundle/render-failed`,
-or `bundle/embed-missing`.
+`bundle/depth-exceeded`, `bundle/duplicate-id`, `bundle/duplicate-file`, `bundle/file-path`,
+`bundle/file-missing`, `bundle/child-stale`, `bundle/embed-count`, `bundle/embed-mismatch`,
+`bundle/drilldown-parent`, `bundle/drilldown-component`, `bundle/drilldown-child`,
+`bundle/drilldown-duplicate`, `bundle/drilldown-cycle`, `bundle/drilldown-shared`,
+`bundle/orphan`, `bundle/node-cap`, `bundle/leaf-mark`, `bundle/ownership-missing`,
+`bundle/ownership-stale`, `bundle/ownership-parse`, `bundle/ownership-not-subset`,
+`bundle/ownership-cycle`. Manifest
+construction can also fail with `bundle/dir-missing`, `bundle/id-invalid`, `bundle/spec-missing`,
+`bundle/spec-parse`, `bundle/empty`, `bundle/entry-ambiguous`, `bundle/entry-missing`,
+`bundle/type-unknown`, `bundle/render-failed`, or `bundle/embed-missing`.
+
+`bundle/drilldown-nested` and `bundle/child-mark` no longer exist — they were the two-level-only
+rule that a child can never itself be a parent. `bundle/drilldown-shared`, `bundle/orphan`,
+`bundle/depth-exceeded`, and the generalized `bundle/leaf-mark` take their place for the tree
+shape and leaf-only mark rule described above.
 
 Manifest validation can fail with `bundle/manifest-missing`, `bundle/manifest-parse`, or
 `bundle/schema: <path> <message>`. These are entries in
@@ -273,6 +323,20 @@ projection attributes are written and every node renders fully lit.
 A lit node means one thing: at least one changed path in the range matched that component's
 globs. It is not a claim about behavior, correctness, or consequences.
 
+**The parent-child chain.** `archify locate --bundle` walks `manifest.drilldowns[]` in the order
+implied by `diagrams[].level` — every row whose `parent` is shallower is resolved before a row
+whose `parent` is one of its own targets — so a grandchild's ownership is always loaded after its
+parent's. For each row it binds that child's ownership sidecar to the diagram named by `parent`
+(not necessarily the entry): the sidecar's `parent.component` must match the row's `component`,
+and `parent.map` must resolve to that parent diagram's spec, or the CLI fails with
+`locate/bundle-incomplete`. A diagram's `excluded` globs accumulate down the chain —
+`inheritParentExcluded` is applied once per hop, so a grandchild's effective `excluded` is the
+entry's `excluded` plus its parent's plus its own, in that order — which is what lets an entry-
+level exclusion suppress a match two or more hops down without every intermediate sidecar
+repeating it. `childReceipts` stays one flat map keyed by diagram id (`children.<id>`) regardless
+of nesting depth; the viewer and the embedded projection are unaffected by how deep a given id
+actually sits.
+
 ## Worked example: the Archify self-map
 
 `docs/cases/archify-self/` is a working bundle: a ten-component architecture entry with two
@@ -291,6 +355,8 @@ The locate commands that produce the two PR receipts, and the rule that only
 
 ## Not supported
 
-No third level. No inline single-file bundles. No bare-path or cross-directory targets, and no
-`http(s)` targets. No automatic generation of children — a child is an authored diagram. No
-auto-layout. No network access and no model call anywhere in `bundle` or in the viewer runtime.
+Depth above 8 levels. No shared children — the bundle is a tree, not a DAG: a diagram can be the
+`child` of at most one drilldown row, and a row may not target an ancestor of its own parent. No
+inline single-file bundles. No bare-path or cross-directory targets, and no `http(s)` targets. No
+automatic generation of children — a child is an authored diagram. No auto-layout. No network
+access and no model call anywhere in `bundle` or in the viewer runtime.

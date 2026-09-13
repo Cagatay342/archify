@@ -102,26 +102,116 @@ function ownershipSchemaFailures(sidecar, label) {
   }
 }
 
-export function validateOwnershipSubset(manifest, sidecar, parentSidecar) {
+// A sidecar's true identity (which diagram it belongs to) is the diagram whose spec file its own
+// filename derives to (x.ownership.json -> x.json), matched against manifest.diagrams[].file —
+// never taken from the sidecar's own `map` declaration, which is exactly the value under test
+// whenever a `parent`/self `map` field is checked below.
+function ownershipSpecPath(sidecarPath) {
+  const base = path.basename(sidecarPath).replace(/\.ownership\.json$/i, '.json');
+  return path.resolve(path.dirname(sidecarPath), base);
+}
+
+function diagramIdForSpecPath(manifest, bundleDir, specPath) {
+  const diagrams = Array.isArray(manifest?.diagrams) ? manifest.diagrams : [];
+  const found = diagrams.find((diagram) => diagram?.file
+    && path.resolve(bundleDir, String(diagram.file).replace(/\.html$/i, '.json')) === specPath);
+  return found ? found.id : null;
+}
+
+export function validateOwnershipSubset(manifest, sidecar, parentSidecar, bundleDir, {
+  sidecarPath, parentSidecarPath, ownSpecPath: expectedSpecPath, parentSpecPath: expectedParentSpecPath,
+} = {}) {
   const failures = [
     ...ownershipSchemaFailures(sidecar, 'child sidecar'),
     ...(parentSidecar ? ownershipSchemaFailures(parentSidecar, 'parent sidecar') : []),
   ];
+  // A schema failure means components[].globs / parent.* cannot be trusted below — walking into
+  // the subset/glob logic on malformed data (e.g. components:[null]) is what used to throw a raw
+  // TypeError out of validateChildOwnershipSubset instead of a controlled BundleError. Stop here.
+  if (failures.length) return failures;
+
+  if (!sidecarPath) throw new TypeError('validateOwnershipSubset: sidecarPath is required');
+
+  // Identity is the diagram this sidecar is expected to describe. For a child reached by walking
+  // a component.child_map pointer, that expectation IS the pointer's own target spec, passed in
+  // explicitly as `ownSpecPath` by the walk (see validateBundle's ownership check) — checking the
+  // sidecar's own `map` against that pointer is what catches a sidecar smuggled in under a false
+  // identity. Only when the caller has no such pointer to check against (the bundle's root sidecar,
+  // whose file can be bound under any name via manifest.ownership.file, or a pure declarative call
+  // with no real walk) do we fall back to the file's own naming convention
+  // (`x.ownership.json` -> `x.json`, matched against manifest.diagrams[].file).
+  const ownSpecPath = expectedSpecPath || ownershipSpecPath(sidecarPath);
+  const ownId = diagramIdForSpecPath(manifest, bundleDir, ownSpecPath);
+  const declaredMapPath = sidecar?.map ? path.resolve(path.dirname(sidecarPath), String(sidecar.map)) : null;
+  if (!ownId) {
+    failures.push(`bundle/ownership-not-subset: ${path.basename(sidecarPath)} does not correspond to any diagram in manifest.diagrams[]`);
+  } else if (declaredMapPath !== ownSpecPath) {
+    failures.push(`bundle/ownership-not-subset: map ${JSON.stringify(sidecar?.map)} does not resolve to ${path.basename(sidecarPath)}'s own diagram spec`);
+  }
+
   const parentLink = sidecar?.parent;
   if (parentLink && typeof parentLink === 'object') {
     const drills = Array.isArray(manifest?.drilldowns) ? manifest.drilldowns : [];
-    const match = drills.find((item) => item.component === parentLink.component && item.parent === manifest.entry);
-    if (!match) {
-      failures.push(`bundle/ownership-not-subset: parent.component ${JSON.stringify(parentLink.component)} is not a drilldown of entry`);
-    }
-    if (parentLink.map && match) {
-      const entry = (manifest.diagrams || []).find((item) => item.id === manifest.entry);
-      const expected = entry ? entry.file.replace(/\.html$/, '.json') : '';
-      const mapName = String(parentLink.map).split('/').pop();
-      if (expected && mapName !== expected) {
-        failures.push(`bundle/ownership-not-subset: parent.map ${JSON.stringify(parentLink.map)} does not name the entry spec`);
+    const declaredParentMapPath = parentLink.map ? path.resolve(path.dirname(sidecarPath), String(parentLink.map)) : null;
+
+    if (parentSidecarPath) {
+      // Real-walk binding: this sidecar was reached by walking parentSidecarPath's child_map, so
+      // parent.map must name THAT exact file's diagram — not merely any diagram manifest.drilldowns
+      // recognizes as *a* valid parent for this component elsewhere in the bundle — and the
+      // (parent, component, child) triple it implies must be a real manifest.drilldowns edge. The
+      // parent's expected identity is supplied by the caller (it already had to compute it to walk
+      // here at all — the root's is manifest.entry, a deeper one's is its own ownSpecPath from the
+      // level above), falling back to the parent file's own naming convention only when the caller
+      // has nothing more specific to offer.
+      const parentSpecPath = expectedParentSpecPath || ownershipSpecPath(parentSidecarPath);
+      const realParentId = diagramIdForSpecPath(manifest, bundleDir, parentSpecPath);
+      if (!realParentId) {
+        failures.push(`bundle/ownership-not-subset: ${path.basename(parentSidecarPath)} does not correspond to any diagram in manifest.diagrams[]`);
+      } else {
+        // The loaded parent sidecar's OWN `map` must also resolve to that same identity — being
+        // found at the expected path/by the expected pointer is not enough on its own; the file's
+        // own self-declaration has to agree too, the same way a walked child's is checked against
+        // the pointer that named it. This matters specifically for the sidecar loadSiblingSidecar
+        // loads for the bundle's root (never independently validated as a "child" elsewhere, since
+        // it isn't reached via a child_map walk) — a mismatch here used to pass silently.
+        if (parentSidecar) {
+          const parentDeclaredMapPath = parentSidecar?.map
+            ? path.resolve(path.dirname(parentSidecarPath), String(parentSidecar.map))
+            : null;
+          if (parentDeclaredMapPath !== parentSpecPath) {
+            failures.push(`bundle/ownership-not-subset: ${path.basename(parentSidecarPath)}'s own map ${JSON.stringify(parentSidecar?.map)} does not resolve to its expected diagram spec`);
+          }
+        }
+        if (declaredParentMapPath !== parentSpecPath) {
+          failures.push(`bundle/ownership-not-subset: parent.map ${JSON.stringify(parentLink.map)} does not name the diagram this sidecar was reached from (${path.basename(parentSidecarPath)})`);
+        } else if (ownId && !drills.some((row) => row.parent === realParentId && row.component === parentLink.component && row.child === ownId)) {
+          failures.push(`bundle/ownership-not-subset: (${realParentId}, ${JSON.stringify(parentLink.component)}, ${ownId}) is not a drilldown edge in manifest.drilldowns`);
+        }
+      }
+    } else {
+      // No real walk to check against (validating a sidecar's declared parent in isolation, e.g.
+      // the bundle's root sidecar with no sibling file on disk) — fall back to matching
+      // manifest.drilldowns by (component, map), still keyed off the file-derived ownId rather
+      // than a declared one.
+      let candidates = drills.filter((item) => item.component === parentLink.component);
+      if (ownId) candidates = candidates.filter((item) => item.child === ownId);
+      if (!candidates.length) {
+        failures.push(`bundle/ownership-not-subset: parent.component ${JSON.stringify(parentLink.component)} is not a drilldown targeting ${ownId ? JSON.stringify(ownId) : 'this diagram'}`);
+      } else if (parentLink.map) {
+        const matched = candidates.some((item) => {
+          const parentDiagram = (manifest.diagrams || []).find((diagram) => diagram.id === item.parent);
+          if (!parentDiagram) return false;
+          const expectedFile = parentDiagram.file.replace(/\.html$/, '.json');
+          return path.resolve(bundleDir, expectedFile) === declaredParentMapPath;
+        });
+        if (!matched) {
+          failures.push(`bundle/ownership-not-subset: parent.map ${JSON.stringify(parentLink.map)} does not name the spec of the drilldown parent for ${JSON.stringify(parentLink.component)}`);
+        }
+      } else if (candidates.length > 1) {
+        failures.push(`bundle/ownership-not-subset: parent.component ${JSON.stringify(parentLink.component)} is ambiguous across ${candidates.map((item) => item.parent).join(', ')}; set parent.map`);
       }
     }
+
     if (parentSidecar) {
       for (const failure of validateChildOwnershipSubset(
         parentSidecar,
@@ -186,6 +276,68 @@ function scanPairs(dir) {
     });
   }
   return pairs;
+}
+
+// The schema caps `diagrams[].level` at 7 (an 8-level bundle), so nothing legitimate is ever
+// deeper than this. Halting expansion here — rather than only checking maxObservedLevel after
+// the fact — is what keeps a pathological or hostile manifest (thousands of chained rows) from
+// blowing the call stack before validation ever gets a chance to reject it.
+const TREE_DEPTH_HALT = 7;
+
+// Depth-first over `drilldowns[]`, walked with an explicit stack instead of native recursion so
+// a long chain (thousands of diagrams) cannot overflow the call stack. `color` mirrors the
+// classic white/gray/black DFS coloring: 1 = open (an ancestor on the current path, so a row
+// that targets it is a cycle), 2 = closed (already fully explored elsewhere, so a second row
+// that targets it means the diagram is shared by more than one parent).
+export function buildTree({ entryId, diagramIds, drilldowns }) {
+  const childrenOf = new Map();
+  for (const row of drilldowns) {
+    if (!childrenOf.has(row.parent)) childrenOf.set(row.parent, []);
+    childrenOf.get(row.parent).push(row);
+  }
+  const level = new Map();
+  const color = new Map();
+  const cycle = new Set();
+  const shared = new Set();
+  if (diagramIds.has(entryId)) {
+    color.set(entryId, 1);
+    level.set(entryId, 0);
+    const stack = [{ id: entryId, depth: 0, rows: childrenOf.get(entryId) || [], index: 0 }];
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.index >= frame.rows.length) {
+        color.set(frame.id, 2);
+        stack.pop();
+        continue;
+      }
+      const row = frame.rows[frame.index];
+      frame.index += 1;
+      const child = row.child;
+      if (!diagramIds.has(child)) continue;
+      const state = color.get(child);
+      if (state === 1) {
+        cycle.add(child);
+        continue;
+      }
+      if (state === 2) {
+        shared.add(child);
+        continue;
+      }
+      if (frame.depth >= TREE_DEPTH_HALT) {
+        // One level past the cap: record it so maxObservedLevel reports depth-exceeded, but
+        // never push a frame for it — that is the bound that keeps the stack finite.
+        level.set(child, frame.depth + 1);
+        color.set(child, 2);
+        continue;
+      }
+      color.set(child, 1);
+      level.set(child, frame.depth + 1);
+      stack.push({ id: child, depth: frame.depth + 1, rows: childrenOf.get(child) || [], index: 0 });
+    }
+  }
+  const orphans = [...diagramIds].filter((id) => id !== entryId && !level.has(id));
+  const maxObservedLevel = level.size ? Math.max(...level.values()) : 0;
+  return { level, cycle: [...cycle], shared: [...shared], orphans, maxObservedLevel };
 }
 
 function chooseEntry(pairs) {
@@ -256,24 +408,30 @@ function renderWithBundleFlags(pair, role, specSha) {
   }
 }
 
-function drilldownsFrom(entryId, spec) {
+function drilldownsFrom(pairs, entryId) {
+  const entryPair = pairs.find((pair) => pair.id === entryId);
+  const others = pairs
+    .filter((pair) => pair.id !== entryId)
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  const ordered = entryPair ? [entryPair, ...others] : others;
   const rows = [];
-  const seen = new Set();
-  for (const item of semanticItems(spec)) {
-    if (!item.drilldown) continue;
-    const key = `${entryId}\u001f${item.id}`;
-    if (seen.has(key)) {
-      fail('bundle/invalid', `Component ${item.id} declares more than one drilldown.`, {
-        failures: [`bundle/drilldown-duplicate: ${item.id}`],
+  for (const pair of ordered) {
+    const seen = new Set();
+    for (const item of semanticItems(pair.spec)) {
+      if (!item.drilldown) continue;
+      if (seen.has(item.id)) {
+        fail('bundle/invalid', `Component ${item.id} declares more than one drilldown.`, {
+          failures: [`bundle/drilldown-duplicate: ${item.id}`],
+        });
+      }
+      seen.add(item.id);
+      rows.push({
+        parent: pair.id,
+        component: item.id,
+        child: item.drilldown,
+        ...(item.label ? { label: String(item.label).slice(0, 80) } : {}),
       });
     }
-    seen.add(key);
-    rows.push({
-      parent: entryId,
-      component: item.id,
-      child: item.drilldown,
-      ...(item.label ? { label: String(item.label).slice(0, 80) } : {}),
-    });
   }
   return rows;
 }
@@ -296,7 +454,30 @@ export function buildBundleManifest(dir) {
   }
 
   const entry = byId.get(entryId);
-  const drilldowns = drilldownsFrom(entryId, entry.spec);
+  const drilldowns = drilldownsFrom(pairs, entryId);
+  const diagramIds = new Set(pairs.map((pair) => pair.id));
+  const tree = buildTree({ entryId, diagramIds, drilldowns });
+  if (tree.cycle.length) {
+    fail('bundle/invalid', `Drilldown graph has a cycle at ${tree.cycle.join(', ')}.`, {
+      failures: tree.cycle.map((id) => `bundle/drilldown-cycle: ${id}`),
+    });
+  }
+  if (tree.shared.length) {
+    fail('bundle/invalid', `Diagram(s) ${tree.shared.join(', ')} are targeted by more than one drilldown row.`, {
+      failures: tree.shared.map((id) => `bundle/drilldown-shared: ${id}`),
+    });
+  }
+  if (tree.orphans.length) {
+    fail('bundle/invalid', `Diagram(s) ${tree.orphans.join(', ')} are not reachable from the entry.`, {
+      failures: tree.orphans.map((id) => `bundle/orphan: ${id}`),
+    });
+  }
+  if (tree.maxObservedLevel > 7) {
+    fail('bundle/invalid', 'Bundle drilldown tree exceeds the 8-level depth cap.', {
+      failures: ['bundle/depth-exceeded'],
+    });
+  }
+  const maxDepth = Math.max(2, tree.maxObservedLevel + 1);
   const diagrams = pairs
     .slice()
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
@@ -305,7 +486,7 @@ export function buildBundleManifest(dir) {
       file: pair.file,
       diagram_type: pair.spec.diagram_type,
       title: pair.spec.meta?.title || pair.id,
-      level: pair.id === entryId ? 0 : 1,
+      level: tree.level.get(pair.id) ?? 0,
       node_count: semanticItems(pair.spec).length,
       spec_sha256: pair.specSha,
       artifact_sha256: pair.artifactSha,
@@ -315,7 +496,7 @@ export function buildBundleManifest(dir) {
     schema_version: 1,
     bundle_type: 'drilldown',
     entry: entryId,
-    max_depth: 2,
+    max_depth: maxDepth,
     diagrams,
     drilldowns,
   };
@@ -347,11 +528,14 @@ export function buildBundleManifest(dir) {
 function loadSiblingSidecar(dir, sidecar) {
   const map = sidecar?.parent?.map;
   if (!map) return null;
-  const base = path.basename(String(map)).replace(/\.json$/, '');
-  const candidate = path.join(dir, `${base}.ownership.json`);
+  // Resolve the full declared path (not just its basename) so "nested/a.json" is never confused
+  // with a same-named "a.json" elsewhere, and return the path we actually loaded from — the
+  // caller needs it to validate the root sidecar's own parent link against the real file, the
+  // same way a walked child's parent link is validated against the sidecar it was reached from.
+  const candidate = defaultOwnershipPath(path.resolve(dir, String(map)));
   if (!fs.existsSync(candidate)) return null;
   try {
-    return JSON.parse(fs.readFileSync(candidate, 'utf8'));
+    return { data: JSON.parse(fs.readFileSync(candidate, 'utf8')), path: candidate };
   } catch {
     return null;
   }
@@ -416,15 +600,29 @@ export function validateBundle(dir) {
   const diagrams = (Array.isArray(manifest.diagrams) ? manifest.diagrams : [])
     .filter((item) => HTML_FILE.test(item.file || ''));
   const entry = diagrams.find((item) => item.id === manifest.entry);
+  const ids = diagrams.map((item) => item.id);
+  const diagramIds = new Set(ids);
+  const drills = Array.isArray(manifest.drilldowns) ? manifest.drilldowns : [];
+  const tree = buildTree({ entryId: manifest.entry, diagramIds, drilldowns: drills });
   runCheck('levels', () => {
     if (!entry || entry.level !== 0) note('bundle/entry-level: entry must exist in diagrams[] at level 0');
-    if (diagrams.some((item) => item.id !== manifest.entry && item.level !== 1)) {
-      note('bundle/child-level: every non-entry diagram must be level 1');
+    if (tree.maxObservedLevel > 7) {
+      note('bundle/depth-exceeded: bundle exceeds the 8-level cap');
+    } else {
+      for (const diagram of diagrams) {
+        if (!tree.level.has(diagram.id)) continue;
+        const expectedLevel = tree.level.get(diagram.id);
+        if (diagram.level !== expectedLevel) {
+          note(`bundle/child-level: ${diagram.id} level ${diagram.level} does not match the computed depth ${expectedLevel}`);
+        }
+      }
+      const expectedMaxDepth = Math.max(2, tree.maxObservedLevel + 1);
+      if (manifest.max_depth !== expectedMaxDepth) {
+        note(`bundle/max-depth: max_depth ${manifest.max_depth} does not match the computed ${expectedMaxDepth}`);
+      }
     }
-    if (manifest.max_depth !== 2) note('bundle/max-depth: max_depth must be 2');
   });
 
-  const ids = diagrams.map((item) => item.id);
   const files = diagrams.map((item) => item.file);
   runCheck('files', () => {
     if (new Set(ids).size !== ids.length) note('bundle/duplicate-id: diagrams[].id must be unique');
@@ -491,25 +689,25 @@ export function validateBundle(dir) {
   });
 
   runCheck('drilldowns', () => {
-    const drills = Array.isArray(manifest.drilldowns) ? manifest.drilldowns : [];
     const seenPair = new Set();
-    const childAsParent = new Set();
-    const entrySpec = pairById.get(manifest.entry)?.spec;
-    const entryIds = new Set(semanticItems(entrySpec).map((item) => item.id));
-    const diagramIds = new Set(ids);
     for (const row of drills) {
-      if (row.parent !== manifest.entry) note(`bundle/drilldown-parent: ${row.component} parent must be the entry`);
-      if (!entryIds.has(row.component)) note(`bundle/drilldown-component: ${row.component} is not in the entry semantic collection`);
+      const parentDiagram = diagrams.find((item) => item.id === row.parent);
+      if (!parentDiagram) {
+        note(`bundle/drilldown-parent: ${row.parent} is not in diagrams[]`);
+      } else {
+        const parentIds = new Set(semanticItems(pairById.get(row.parent)?.spec).map((item) => item.id));
+        if (!parentIds.has(row.component)) {
+          note(`bundle/drilldown-component: ${row.component} is not in ${row.parent}'s semantic collection`);
+        }
+      }
       if (!diagramIds.has(row.child)) note(`bundle/drilldown-child: ${row.child} is not in diagrams[]`);
       const key = `${row.parent}\u001f${row.component}`;
       if (seenPair.has(key)) note(`bundle/drilldown-duplicate: ${row.component}`);
       seenPair.add(key);
-      if (row.child === manifest.entry) note('bundle/drilldown-cycle: a child cannot be the entry');
-      childAsParent.add(row.child);
     }
-    if (drills.some((row) => childAsParent.has(row.parent) && row.parent !== manifest.entry)) {
-      note('bundle/drilldown-nested: a child cannot be a parent');
-    }
+    for (const id of tree.cycle) note(`bundle/drilldown-cycle: ${id}`);
+    for (const id of tree.shared) note(`bundle/drilldown-shared: ${id}`);
+    for (const id of tree.orphans) note(`bundle/orphan: ${id}`);
   });
 
   runCheck('node-cap', () => {
@@ -523,12 +721,13 @@ export function validateBundle(dir) {
     }
   });
 
-  runCheck('child-mark', () => {
+  runCheck('leaf-mark', () => {
+    const parentIds = new Set(drills.map((row) => row.parent));
     for (const diagram of diagrams) {
-      if (diagram.id === manifest.entry) continue;
+      if (parentIds.has(diagram.id)) continue;
       const html = pairById.get(diagram.id)?.html || '';
       const marks = (html.match(/\bdata-drilldown-child="/g) || []).length;
-      if (marks) note(`bundle/child-mark: ${diagram.id} has ${marks} drilldown mark(s); the second layer cannot drill down`);
+      if (marks) note(`bundle/leaf-mark: ${diagram.id} has ${marks} drilldown mark(s); a leaf diagram cannot drill down`);
     }
   });
 
@@ -548,34 +747,106 @@ export function validateBundle(dir) {
     if (sha256Bytes(sidecarBytes) !== manifest.ownership.sha256) {
       note('bundle/ownership-stale: ownership sidecar sha256 does not match the manifest');
     }
+    // Parse failure and root-shape checks must run — and return — before anything downstream
+    // (schema, sibling loading, the tree walk) ever looks at `sidecar`. A literal JSON `null` used
+    // to slip past a bare `if (!sidecar) return;` with no failure recorded at all.
     let sidecar;
-    try { sidecar = JSON.parse(sidecarBytes.toString('utf8')); } catch {
+    try {
+      sidecar = JSON.parse(sidecarBytes.toString('utf8'));
+    } catch {
       note('bundle/ownership-parse: ownership sidecar is not valid JSON');
-      sidecar = null;
+      return;
     }
-    if (!sidecar) return;
-    const parentSidecar = loadSiblingSidecar(resolved, sidecar);
-    for (const failure of validateOwnershipSubset(manifest, sidecar, parentSidecar)) note(failure);
-    for (const component of Array.isArray(sidecar.components) ? sidecar.components : []) {
-      if (!component.child_map) continue;
-      const childOwnPath = defaultOwnershipPath(path.join(resolved, component.child_map));
-      if (!fs.existsSync(childOwnPath)) continue;
-      let childSidecar;
-      try {
-        childSidecar = JSON.parse(fs.readFileSync(childOwnPath, 'utf8'));
-      } catch {
-        note('bundle/ownership-parse: child ownership sidecar is not valid JSON');
-        continue;
-      }
-      for (const failure of validateChildOwnershipSubset(
-        sidecar,
-        component.id,
-        childSidecar,
-        'bundle/ownership-not-subset',
-      )) {
-        note(`${failure.code}: ${failure.message}`);
-      }
+    if (!sidecar || typeof sidecar !== 'object' || Array.isArray(sidecar)) {
+      note('bundle/ownership-parse: ownership sidecar is not a JSON object');
+      return;
     }
+
+    const resolvedOwnershipPath = path.resolve(ownershipPath);
+    const sibling = loadSiblingSidecar(resolved, sidecar);
+    // The root sidecar's identity is the entry diagram, full stop: manifest.ownership binds this
+    // file to the bundle's ownership tree, and that tree is rooted at the entry — being found on
+    // disk, matching the schema, or being bound by manifest.ownership.file at all is not proof a
+    // sidecar actually describes the entry's own components; only its own `map` resolving to the
+    // entry's spec is. An operator may still point --ownership at an arbitrarily-named file (the
+    // filename need not be "<entryId>.ownership.json"), but whatever file that is must self-declare
+    // `map` as the entry's own spec, not any other diagram's.
+    const rootSpecPath = entry ? path.resolve(resolved, entry.file.replace(/\.html$/i, '.json')) : undefined;
+    const rootFailures = validateOwnershipSubset(manifest, sidecar, sibling?.data ?? null, resolved, {
+      sidecarPath: resolvedOwnershipPath,
+      parentSidecarPath: sibling?.path,
+      ownSpecPath: rootSpecPath,
+    });
+    for (const failure of rootFailures) note(failure);
+    // A schema failure or an identity mismatch here means `sidecar` itself cannot be trusted for a
+    // walk — recursing into its `components[]` regardless (the pre-fix behavior) is what let a
+    // malformed root sidecar reach the same raw-TypeError failure mode the child-branch fix (see
+    // "if (childFailures.length) continue;" below) already closed one level down.
+    if (rootFailures.length) return;
+
+    const visited = new Set([resolvedOwnershipPath]);
+    // `currentSpecPath` threads the VERIFIED identity of `current` down through the recursion —
+    // for the root that is rootSpecPath (the entry's spec, not necessarily derivable from the root
+    // sidecar's own, possibly arbitrary, filename); for anything deeper it is the child_map pointer
+    // target that was already used to validate that level. This is what lets a grandchild's
+    // parent.map be checked against the parent's REAL identity even when the root file itself
+    // isn't named by convention, instead of re-deriving (and getting wrong) that identity from a
+    // raw file path.
+    const walkOwnershipTree = (current, currentPath, currentSpecPath) => {
+      for (const component of Array.isArray(current.components) ? current.components : []) {
+        if (!component.child_map) continue;
+        // child_map is relative to the directory holding the CURRENT sidecar, not the bundle
+        // root — the same convention locate/ownership.mjs uses, and the one that matters once
+        // sidecars can live in subdirectories.
+        const childOwnPath = defaultOwnershipPath(path.resolve(path.dirname(currentPath), component.child_map));
+        if (!fs.existsSync(childOwnPath)) continue;
+        const resolvedChildOwnPath = path.resolve(childOwnPath);
+        if (visited.has(resolvedChildOwnPath)) {
+          note(`bundle/ownership-cycle: ${path.basename(resolvedChildOwnPath)} is already an ancestor in the ownership tree`);
+          continue;
+        }
+        let childSidecar;
+        try {
+          childSidecar = JSON.parse(fs.readFileSync(childOwnPath, 'utf8'));
+        } catch {
+          note('bundle/ownership-parse: child ownership sidecar is not valid JSON');
+          continue;
+        }
+        if (!childSidecar || typeof childSidecar !== 'object' || Array.isArray(childSidecar)) {
+          note(`bundle/ownership-parse: ${path.basename(resolvedChildOwnPath)} is not a JSON object`);
+          continue;
+        }
+        // The pointer that led us here (`current`'s `component.child_map`) and the pointer the
+        // child claims back (`childSidecar.parent`) must name each other — otherwise a sidecar
+        // could ride in on the wrong component and inherit exclusions it was never granted.
+        if (!childSidecar.parent || typeof childSidecar.parent !== 'object' || childSidecar.parent.component !== component.id) {
+          note(`bundle/ownership-not-subset: ${path.basename(resolvedChildOwnPath)} parent.component does not match the "${component.id}" child_map pointer that names it`);
+          continue;
+        }
+        // Validates the full (parent, component, child) triple against manifest.drilldowns, bound
+        // to the REAL file we walked from (currentPath) — this is what actually binds childSidecar
+        // to *this* drilldown edge, not merely to some other row that happens to share the same
+        // component name elsewhere in the tree. The child's expected identity is the child_map
+        // pointer's own target spec (not the sidecar's own filename), since that pointer is what
+        // actually led here.
+        const childSpecPath = path.resolve(path.dirname(currentPath), component.child_map);
+        const childFailures = validateOwnershipSubset(manifest, childSidecar, current, resolved, {
+          sidecarPath: resolvedChildOwnPath,
+          parentSidecarPath: currentPath,
+          ownSpecPath: childSpecPath,
+          parentSpecPath: currentSpecPath,
+        });
+        for (const failure of childFailures) note(failure);
+        // A schema failure (e.g. a malformed `components` entry) means childSidecar's own shape
+        // cannot be trusted for a further walk either — recursing into it here is exactly what
+        // used to turn a controlled failure into a raw TypeError one level down.
+        if (childFailures.length) continue;
+        visited.add(resolvedChildOwnPath);
+        walkOwnershipTree(childSidecar, resolvedChildOwnPath, childSpecPath);
+        visited.delete(resolvedChildOwnPath);
+      }
+    };
+    walkOwnershipTree(sidecar, resolvedOwnershipPath, rootSpecPath);
   });
 
   if (failures.length) {

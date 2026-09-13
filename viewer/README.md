@@ -1269,7 +1269,8 @@ Focus/Lens/Route reject embed at their own entry points.
   no `prefers-reduced-motion`, not the mobile-contained wide-diagram mode
   (`window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')`,
   the same predicate `viewer-camera.js` itself uses), none of Route Probe /
-  Semantic Lens / Presentation active (deliberately excluding Intent Trace,
+  Semantic Lens / a playing guided story active (Presentation itself does
+  not block — it only hides chrome; deliberately excluding Intent Trace,
   whose own "active" node is just its ordinary 90ms fine-pointer hover
   preview — almost always true while a real mouse hovers the very node
   being wheel-zoomed, so treating it as blocking would make the feature

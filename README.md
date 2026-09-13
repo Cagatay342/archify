@@ -29,16 +29,8 @@ Archify is a Node.js rendering and validation system for Cursor, Claude Code, Co
 **[Project page](https://tt-a1i.github.io/archify/)** · **[Scenario guide](https://tt-a1i.github.io/archify/guide.html)** · **[Proof Lab](https://tt-a1i.github.io/archify/gallery.html)**
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
-
-> **This fork (`Cagatay342/archify`, branch `nested-drilldown`)** adds N-depth drilldown bundles, recursive descend, wheel/pinch zoom and opt-in zoom-dive, and makes whole-repository maps default to a recursive bundle. Install it instead of upstream with:
->
-> ```bash
-> npx skills add https://github.com/Cagatay342/archify/tree/nested-drilldown -g -y --copy
-> ```
->
-> Then, in any repository, ask your agent: "visualize this project's architecture with archify" — it authors the outside view, recurses into components that have real internal structure, and bundles the result (`archify bundle <dir>`). Serve the output directory over HTTP for three or more levels.
 
 Using Cursor? Open the [agent-aware quick start](https://tt-a1i.github.io/archify/start.html?agent=cursor&type=architecture) for exact global and project commands.
 
@@ -107,19 +99,19 @@ Open [`examples/web-app.html`](examples/web-app.html) locally to try the complet
 ### 1. Install
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
 
 For an explicit, non-interactive Cursor install:
 
 ```bash
-npx -y skills add tt-a1i/archify --skill archify --agent cursor --global --copy --yes
+npx -y skills add Cagatay342/archify --skill archify --agent cursor --global --copy --yes
 ```
 
 To try without installing:
 
 ```bash
-npx skills use tt-a1i/archify@archify --agent codex
+npx skills use Cagatay342/archify@archify --agent codex
 ```
 
 [DSH community opt-in](integrations/deepseek-harness/README.md): `dsh plugin --profile web add @tt-a1i/archify-dsh@0.1.0`
@@ -137,10 +129,10 @@ Use Archify to draw: Browser -> API -> Redis cache -> PostgreSQL fallback.
 For source evidence, open a repository and ask:
 
 ```text
-Analyze this repository, then use archify to create a high-level runtime architecture diagram.
-Show 8–12 core components, one primary path, external dependencies, and trust boundaries.
-Put supporting detail in cards instead of adding more edges.
+Use archify to map this repository's architecture as a nested drilldown bundle under docs/diagrams/.
 ```
+
+Archify maps the outside view first and adds children only where a component has real internal structure.
 
 ### 3. Refine in chat
 

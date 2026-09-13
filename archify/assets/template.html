@@ -4468,6 +4468,29 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     html[data-bundle-nested="true"] .diagram-nav #btn-diagram-guide,
     html[data-drilldown-level="1"] #btn-present,
     html[data-drilldown-level="1"] .guided-views { display: none !important; }
+    /* Faz 4 UX note (Fable): a nested child still renders its own full
+       page chrome (title/subtitle header, page padding) inside its
+       iframe, so each additional descend level compounds that same
+       fixed chrome cost against a shrinking iframe box, leaving less and
+       less room for the actual diagram the deeper you go. The toolbar/
+       legend column that .header's own padding-right normally reserves
+       space for is already hidden above on a nested child, so that
+       reserved space is pure waste here; the fixes below only reclaim
+       chrome the child was already not using. Pure CSS, no behavior
+       change: the title/subtitle/crumb text and every element's
+       existence are unchanged, only their spacing shrinks. */
+    /* padding-inline only (not the shorthand): padding-block already has
+       its own finer-grained, height-aware rules elsewhere (the >=768px
+       &&<=920px-height breakpoint, and html[data-nav-stage-rail="true"]'s
+       own tighter 0.375rem) that a nested child should keep inheriting
+       rather than override with one flat number. */
+    html[data-bundle-nested="true"] body { padding-inline: 0.85rem; }
+    html[data-bundle-nested="true"] .header {
+      margin-bottom: 0.6rem;
+      padding-right: 0;
+    }
+    html[data-bundle-nested="true"] .header-row { margin-bottom: 0.25rem; }
+    html[data-bundle-nested="true"] .diagram-container { padding: 0.5rem; }
     svg [data-node-id][data-locate-inside] [data-locate-inside-count] {
       font-size: 8px;
       font-weight: 600;

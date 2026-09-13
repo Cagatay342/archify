@@ -34,6 +34,19 @@ Use this bounded path for ordinary generation. Do not read the optional Viewer R
 
    A non-zero exit can never be described as success. A failed delivery preserves any previous output, so do not run `visual-check` on that path: it would inspect the stale last-good artifact, not the failed candidate. If validation fails, change only the diagnosed `subject`, verify `evidence`, choose from `supportedFixes`, and rerun. Continue focused correction while the objective error count reaches a new minimum. If two consecutive rounds do not improve that best count, stop and report the unresolved diagnostics truthfully.
 
+## Repository maps: recursive drilldown bundles
+
+When the user asks to visualize a whole repository, system, or service and its parts, default to a drilldown bundle: one directory of ordinary diagrams whose parents descend into children in place. Keep one diagram when the relevant detail fits clearly within twelve primary nodes; create no child unless the decomposition test below passes. Read `references/drilldown-bundles.md` for the manifest, validation, ownership, and reader-behavior contract.
+
+Work outside-in, then recurse:
+
+1. **Entry (level 0).** Survey the repository top-down (directory layout, deploy manifests, entry points, trust boundaries) *before* the schema/example reading of the fast authoring path, then write the candidate immediately: at most 12 primary nodes, one main path, real boundaries. The filename stem is the diagram id.
+2. **Decomposition test, per component.** For each architecture component of the diagram just authored, inspect the source it owns. It gets a child only when it has several distinguishable internal parts, its own request path, or its own stores or boundaries, and inlining them would break the twelve-node cap or blur the parent. One process or library with nothing distinct inside stays flat; never pad a level. A child may be any of the five types (a workflow or sequence child when the structure is a process or call chain); only architecture components declare `"drilldown": "<child id>"`, one child each.
+3. **Recursion.** Recurse through architecture children; the other four types are leaves. Stop when another diagram would add no distinct, relevant structure. A bundle spans 2–8 total levels, entry at level 0.
+4. **Parallel authoring.** Independent children are authored in parallel (one subagent per child when the host supports it), each as fresh authorship from its own source evidence with the parent component as context, never a cropped copy of the parent. Optional ownership sidecars must nest: child globs are a subset of the parent component's globs.
+5. **Bundle, the one re-render exception.** Validate and `deliver` every diagram with the fast path into the same directory (`<id>.json` beside `<id>.html`, no subdirectories). Then `node bin/archify.mjs bundle <dir> --json` re-renders each HTML with its bundle attributes, writes `manifest.json`, and validates the tree (the entry is inferred: the unique diagram that declares drilldowns and is not itself a target). This is the only step allowed to rewrite delivered HTML; the bundle receipt supersedes the per-diagram artifact hashes, `bundle --check` is the write-free gate and never replaces showcase acceptance. Collect browser evidence on the final entry HTML. For three or more levels, recommend serving the directory over HTTP; the `file://` browser test needs `--allow-file-access-from-files`.
+6. **Report** the complete tree and briefly summarize the stopping decisions.
+
 ## Update awareness
 
 After the first candidate exists, run the packaged checker `scripts/check-update.mjs` once with Node and continue the requested workflow. If the command cannot run, continue without mentioning the check.

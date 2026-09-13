@@ -16,6 +16,7 @@ Archify is a Node.js rendering and validation system for Cursor, Claude Code, Co
 
 - **Open it and present** — five diagram types, four presets, dark/light themes, built-in brand marks, and finite motion
 - **Review architecture changes before merge** — compare two validated snapshots as Before / Delta / After, with exact added, removed, changed, moved, and rerouted facts
+- **Locate changes and open component details** — [locate](archify/references/locate.md) classifies Git paths against an authored ownership sidecar; [drilldown bundles](archify/references/drilldown-bundles.md) connect an overview to same-directory child diagrams
 - **Every interaction stays grounded** — search nodes, optionally open revision-verified source, trace upstream/downstream authored reach and exact routes, compare roles, and play guided stories without inventing topology
 - **One file, ready to trust and share** — typed JSON IR and deterministic checks produce self-contained HTML plus PNG, SVG, WebM, and 1200×630 share cards
 
@@ -28,7 +29,7 @@ Archify is a Node.js rendering and validation system for Cursor, Claude Code, Co
 **[Project page](https://tt-a1i.github.io/archify/)** · **[Scenario guide](https://tt-a1i.github.io/archify/guide.html)** · **[Proof Lab](https://tt-a1i.github.io/archify/gallery.html)**
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
 
 Using Cursor? Open the [agent-aware quick start](https://tt-a1i.github.io/archify/start.html?agent=cursor&type=architecture) for exact global and project commands.
@@ -98,19 +99,19 @@ Open [`examples/web-app.html`](examples/web-app.html) locally to try the complet
 ### 1. Install
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
 
 For an explicit, non-interactive Cursor install:
 
 ```bash
-npx -y skills add tt-a1i/archify --skill archify --agent cursor --global --copy --yes
+npx -y skills add Cagatay342/archify --skill archify --agent cursor --global --copy --yes
 ```
 
 To try without installing:
 
 ```bash
-npx skills use tt-a1i/archify@archify --agent codex
+npx skills use Cagatay342/archify@archify --agent codex
 ```
 
 [DSH community opt-in](integrations/deepseek-harness/README.md): `dsh plugin --profile web add @tt-a1i/archify-dsh@0.1.0`
@@ -128,10 +129,10 @@ Use Archify to draw: Browser -> API -> Redis cache -> PostgreSQL fallback.
 For source evidence, open a repository and ask:
 
 ```text
-Analyze this repository, then use archify to create a high-level runtime architecture diagram.
-Show 8–12 core components, one primary path, external dependencies, and trust boundaries.
-Put supporting detail in cards instead of adding more edges.
+Use archify to map this repository's architecture as a nested drilldown bundle under docs/diagrams/.
 ```
+
+Archify maps the outside view first and adds children only where a component has real internal structure.
 
 ### 3. Refine in chat
 
@@ -248,7 +249,7 @@ Settings:
 | Play a guided story / change chapter | <kbd>P</kbd> / <kbd>[</kbd> <kbd>]</kbd> |
 | Enter Presentation Stage | <kbd>F</kbd> |
 | Choose visual style (`S` cycles) / toggle theme / open Export | <kbd>S</kbd> / <kbd>T</kbd> / <kbd>E</kbd> |
-| Zoom or reset | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> |
+| Zoom or reset | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>/wheel/pinch/<kbd>Z</kbd>-dive |
 
 Stable links can restore `#focus=<id>`, `#focus=<id>&reach=upstream|downstream`, `#relation=<id>`, `#route=<source>~<target>`, `#lens=<kind>~<kind>`, and `#view=<view-id>`. Reader-driven motion is finite, respects `prefers-reduced-motion`, and never enters canonical exports.
 

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Dive Fixture \u2014 Leaf",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1200,
+      900
+    ]
+  },
+  "components": [
+    {
+      "id": "leafNode",
+      "type": "backend",
+      "label": "Leaf",
+      "sublabel": "no further dive",
+      "pos": [
+        530,
+        420
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "aux3",
+      "type": "external",
+      "label": "Aux",
+      "pos": [
+        20,
+        20
+      ],
+      "size": [
+        80,
+        40
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "aux3-leaf",
+      "from": "aux3",
+      "to": "leafNode"
+    }
+  ]
+}

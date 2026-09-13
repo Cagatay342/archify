@@ -9,8 +9,11 @@ and legend previews, `route-probe.js` for directed paths and Route Journey,
 `guided-views.js` for authored chapters and Story playback,
 `focus.js` for semantic selection, relationships, reachability and shared flow tokens,
 `export.js` for export menus, serialization, images, cards, clipboard and WebM,
-`export-cleanup.js` for its private SVG clone cleanup, and
-`template.source.html` for the rest of the Viewer.
+`export-cleanup.js` for its private SVG clone cleanup, `dive.js` for the
+opt-in zoom-triggered auto-descend, and
+`template.source.html` for the rest of the Viewer (including the
+`Archify.drilldown` descend/ascend/handshake IIFE itself, which stays inline
+rather than as its own fragment).
 `archify/assets/template.html` is the committed
 generated artifact, consumed unchanged by all five renderers and the installed
 Skill. These maintainer sources live outside the packaged `archify/` directory.
@@ -19,7 +22,10 @@ From `archify/`, run `npm run generate:viewer` after editing any source.
 `npm run check:viewer` verifies freshness without writing; `npm test` includes
 that check. Assembly inserts each fragment verbatim at its fixed marker.
 Reader, Chrome Layout, Camera, Radar, Motion Governor, Finder, Intent Trace, Semantic Lens, Route Probe, Guided Views, Focus and Export
-extractions preserve delivered HTML bytes. Export cleanup adds a
+extractions preserve delivered HTML bytes — they were pulled out of
+`template.source.html` unchanged. `dive.js` is not one of those: it is a new
+fragment holding new functionality, not bytes moved out of somewhere else.
+Export cleanup adds a
 private function and a call, changing script bytes but preserving cleanup order
 and SVG output. All fragments retain classic-script scope and initialization order.
 Generated output is not a second editing
@@ -728,12 +734,85 @@ zoom/reset controls and the initial viewBox. The existing `apply()`,
 Views already exist; checks for later modules and deferred callers remain needed.
 The shared `viewerText` helper stays in classic-script scope.
 
-The interface remains `zoomIn`, `zoomOut`, `reset`, `reveal`, `centerAt`,
-`logicalViewport`, `sync`, and `state`. `state()` returns a copy of scale/x/y/mode;
-the modes are overview, manual and semantic. Zoom and Reset return undefined;
-`centerAt` returns a boolean, `logicalViewport` can return null, and `sync`
-delegates to `reveal` or returns false. Manual Reset interrupts callers, whereas
-`reset({ automatic: true })` stops camera motion without the manual takeover path.
+The interface remains `zoomIn`, `zoomOut`, `zoomAt`, `reset`, `reveal`, `centerAt`,
+`logicalViewport`, `sync`, `state`, `onChange`, `offChange`, `on`, and `off`.
+`state()` returns a copy of scale/x/y/mode; the modes are overview, manual and
+semantic. Zoom and Reset return undefined; `centerAt` returns a boolean,
+`logicalViewport` can return null, and `sync` delegates to `reveal` or returns
+false. Manual Reset interrupts callers, whereas `reset({ automatic: true })`
+stops camera motion without the manual takeover path.
+
+`zoomAt(nextScale, clientX, clientY, { snap })` scales around a caller-supplied
+viewport point instead of the box's own visual center, using `svgOrigin()` — a
+static content-box origin derived from `container`'s own `getBoundingClientRect`,
+border/padding and `scrollLeft`/`scrollTop` (RTL's negative `scrollLeft` included),
+never a live `getBoundingClientRect` of the transformed, transitioning SVG — so
+repeated calls within one input burst (two pinch fingers moving in the same
+frame, a fast wheel-up immediately followed by another) stay exact regardless of
+where the 0.18s CSS transition currently is. `snap: true` rounds to the existing
+quarter-step 1–3 clamp, matching `zoomIn`/`zoomOut`/`+`/`-`; omitted or falsy, the
+scale is continuous. `zoom(next)` is `zoomAt` anchored on the box's own center
+and always snaps, preserving byte-identical quarter-step behavior for the
+existing controls; it stays correct while the container itself is scrolled
+(the narrow wide-diagram mode's `+`/`-`/`0`), which the pre-`zoomAt` center-only
+math also happened not to need.
+
+Wheel (`deltaY`, exponential factor, `ctrlKey` trackpad-pinch multiplier) and
+two-finger touch pinch (pointer-event distance ratio, fixed gesture-start
+midpoint) both call `zoomAt` without snapping, so the diagram zooms continuously
+between 1 and 3 around the cursor or the pinch midpoint. Wheel and pinch defer to
+the existing manual-takeover contract: any scale change calls `interruptCamera`
+first, same as `zoomIn`/`zoomOut`/drag. A wheel gesture that cannot change scale
+(for example, zooming out at the 1x floor) does not call `preventDefault`, so
+page scrolling passes through. Both gestures no-op — no camera change, no event —
+inside the mobile-contained mode (`window.innerWidth <= 720` with
+`data-wide-diagram`); the container's own `touch-action: auto` there is a native
+scroll/pinch affordance for the browser, not a substitute for this JS guard, which
+`beginPinch`/`updatePinch` check independently of `onWheel`.
+
+Pinch pointer capture is acquired for both touch ids at gesture start and held
+for the gesture's lifetime (not released early); `pointerup`, `pointercancel` and
+`lostpointercapture` all route through the same cleanup, which drops the lifted
+id, releases its capture, and — once fewer than two ids remain — ends the pinch.
+A single-finger drag is scoped to the `pointerId` that started it; a second touch
+arriving while scale is above 1 cancels that drag before the pinch takes over,
+and a third touch during an active pinch never starts a new drag (the pan-start
+handler refuses any touch pointerdown while at least one touch id is already
+tracked). When a pinch ends because one finger lifted, the remaining finger does
+not resume panning — a drag can only begin on its own `pointerdown`, and the
+surviving finger's was already consumed when the pinch began.
+
+Every wheel tick and pinch update emits `{ phase, source, id }` through
+`on('gesture', cb)`/`off('gesture', cb)`, so a caller can
+tell a continuing physical gesture from a fresh one. `source` is `'wheel'` or
+`'pinch'` (`'buttons'`/`'keyboard'` are reserved, not yet emitted). Wheel ticks
+within 150ms of each other share one monotonically-assigned `id` and its
+`'start'`/`'move'` phases; 150ms of silence emits `'end'` for that id and the
+next tick starts a new one. Pinch phases are the gesture's own lifecycle:
+`'start'` on the first `beginPinch`, `'move'` on every `updatePinch`, and
+`'end'`/`'cancel'` when it stops (`'cancel'` for `pointercancel`/
+`lostpointercapture`, `'end'` otherwise). A wheel gesture that cannot change
+scale, and a pinch that cannot go below the 1x floor, both emit `minZoomOut`
+through `on`/`off` (not `onChange`/`offChange`) with `{ source, gestureId }`
+instead of changing the camera; a consumer such as an ascend trigger consumes that event.
+
+`onChange(cb)`/`offChange(cb)` subscribe to every `apply()`, receiving
+`{ scale, x, y, mode, detail, transitioning }` (`detail` is `detailLevel()`'s
+current value). Every `apply()` fires the callback immediately with
+`transitioning: true` for the just-set target state; a second call with
+`transitioning: false` follows once that state has visually settled — on the
+SVG's own `transitionend` for `transform`, or a 200ms fallback when no CSS
+transition runs (reduced motion, or a JS-eased transaction that sets
+`transition: none` itself) — unless a newer `apply()` supersedes this one
+first, in which case this `apply()`'s settled callback never fires at all
+(`clearTransitionSettle()`, called at the top of `notifyChange()` for the new
+`apply()`, cancels the still-pending watch outright rather than letting it
+run alongside the new one).
+Only the latest `apply()`'s settle watch is armed; a superseding `apply()` before
+settlement cancels the prior watch instead of stacking listeners. `on(event, cb)`/
+`off(event, cb)` are the generic form used for other camera events (`minZoomOut`,
+`gesture`). Listener errors are caught per-callback and never interrupt `apply()`
+or other subscribers; there is no unsubscribe-all.
 
 `reveal` returns a transaction or false, with branch-specific side effects.
 Desktop empty/unknown targets can return before changing the camera. At widths
@@ -938,6 +1017,328 @@ Route/Reach validation, finite-dimension checks, receipts, errors, menu behavior
 rasterization, clipboard and recording remain owned by Export. Its existing
 callers use the same paths and return fields. Tests exercise final browser exports;
 isolated clone tests supplement them for restoration and idempotence.
+
+## Drilldown contract
+
+`Archify.drilldown` (`template.source.html`) initializes near the end of the
+classic-script scope, after Focus, Semantic Lens, Route Probe, Intent Trace,
+Presentation and Guided Views exist. Every rendered diagram runs the same
+module; an ordinary (non-bundle) diagram's early return leaves only the pure
+handshake/model helpers (`validateHandshake`, `resolveChildFile`,
+`applyProjection`, `buildStaleCardModel`, `fillStaleCard`, `isSafeChildFile`,
+`locateChipModel`, `crumbCurrentText`, `paintInsideBadge`) installed and
+registers no DOM listener. `archify/references/drilldown-bundles.md` "Reader
+behavior" is the reading-order companion to this section.
+
+- **Local state vs. absolute depth.** Each viewer tracks `level` (0/1: does
+  this document itself currently have its own child open) independently of
+  `myDepth` (0 at the entry, incremented once per hop from the subtree the
+  parent hands down). `html[data-drilldown-level="1"]` and
+  `html[data-drilldown-open="true"]` both carry the local-open meaning and are
+  set and cleared together; `data-drilldown-level` is kept for compatibility
+  with existing callers and CSS. `html[data-drilldown-depth]` is written once,
+  from the parent's hello, and is informational only — nothing in the runtime
+  branches on it except the ascend-request depth arithmetic described below.
+- **Recursive descend.** `descend(componentId)` no longer refuses merely
+  because the current document is itself nested; it only refuses when this
+  document already has its own child open (`active()`), or when
+  `myDepth + 1 >= max_depth` (`belowMaxDepth()`) — a defensive ceiling in
+  addition to the tree's own natural bound, since a diagram's marks are drawn
+  from its own JSON at render time with no knowledge of the bundle's overall
+  `max_depth`. `syncPassport`'s Descend control and `drillFor()` (see below)
+  enforce the same ceiling and edge identity, so a mark or button that
+  shouldn't work never silently no-ops through a different door.
+- **Subtree distribution and its own validation.** The entry's embedded
+  manifest is normative only for the entry itself. Every
+  `archify:bundle-hello` a parent sends to its own child also carries
+  `subtree: {entry, depth, max_depth, diagrams, drilldowns}` — built by
+  walking the parent's own manifest from the child's id down, so a
+  grandchild's hello, in turn, carries a smaller subtree rooted at itself.
+  `readManifest()` prefers an embedded script (only ever true at the entry)
+  and otherwise returns this received subtree. A leaf child's subtree is not
+  empty: `diagrams` still carries the leaf's own manifest row (`byId[id]` for
+  its own id), only `drilldowns` is empty, and that empty `drilldowns` is
+  what keeps it from ever offering a further descend. A hello's `subtree`,
+  when present, is shape-validated
+  (`validateSubtreeShape`) before it is accepted at all: every `diagrams[]`
+  entry's `id`/`file`/`spec_sha256` and every `drilldowns[]` row's
+  `parent`/`component`/`child` must have the expected format, and
+  `depth < max_depth` must hold. An invalid subtree is rejected outright —
+  no ack is sent, so the parent's own handshake simply times out and shows
+  its own stale card, rather than this document silently running on a
+  malformed hand-down. `drillFor(componentId, childId)` matches the full
+  `(parent, component, child)` triple — `parent` being this document's own
+  diagram id (`myOwnDiagramId()`, `readManifest().entry`) and `childId` the
+  node's own baked `data-drilldown-child` annotation — not `component` alone.
+  A component id reused by a different diagram in the bundle can never
+  resolve to the wrong row, and neither can a row whose declared `child`
+  names a diagram other than the one the node itself already points to; a
+  mismatch on any of the three is a missing row (stale), never a load of the
+  wrong file.
+- **Navigation sessions are mandatory, not best-effort.** `descend()` assigns
+  a new `session` (a per-document monotonic counter) to `current` and
+  includes it in the hello; the child echoes it back on every message it
+  originates (`bundle-ack`, `drilldown-escape`, `drilldown-crumb`,
+  `drilldown-ascend-done`) as `helloSession`. Every one of those message
+  types, plus `drilldown-ascend-request`, requires a numeric `session` that
+  exactly matches the receiver's own current session — a message with no
+  `session` field at all is rejected exactly like one with the wrong value;
+  there is no legacy "absent session, accept anyway" path. This is what makes
+  a delayed or forged ack/escape/crumb from an already-superseded descent
+  inert regardless of whether it is missing a session or merely stale.
+  `drilldown-ascend-request`/`drilldown-ascend-done` additionally carry a
+  `requestId` (a second, ascend-specific monotonic counter): a document only
+  acts on an `ascend-done` whose `requestId` matches the one it most recently
+  sent, and `back()`/a new `handleAscendRequest` call both cancel the
+  previous request's pending settle timer outright — its timeout is not a
+  fixed 200ms but `ASCEND_SETTLE_STEP_MS` (250ms) times
+  `max(1, max_depth - myDepth)`, so a deeper ascend gets a longer window —
+  (`cancelPendingAscend()`, storing the real timer id) rather than only
+  clearing a callback reference —
+  a superseded request's timer literally cannot fire once cancelled, and even
+  if it somehow did, the session/requestId/`current` checks below would still
+  reject its effect.
+- **`current` is cleared the instant `back()` starts, not after the ascend
+  animation.** `back()` captures what `reveal()` still needs in a local
+  `closing` variable and sets the module's `current` to `null` immediately,
+  before the ~170ms ascend transition even begins. Every message handler that
+  requires `current` (ack, escape, crumb, ascend-done) therefore already sees
+  "nothing to attach to" for the whole ascending window, without needing a
+  state check of its own. `reveal()` itself checks `current !== null` (not a
+  captured session) to detect whether a new `descend()` superseded it while
+  ascending, and does nothing in that case — the new descent already owns the
+  host/frame/focus.
+- **Readiness is ACK-only, and the state string never lies about it.**
+  `data-drilldown-state` moves `descending` → (ack) `open` → `ascending` →
+  (removed) — a strict superset of the CSS-transition-only
+  `data-drilldown-anim` attribute (`descending`/`ascending`/removed), which
+  the ~170ms timer touches so the transition class ends on schedule.
+  `data-drilldown-state` itself stays `descending` for as long as the ack
+  takes, however long that is — it is never cleared or changed by a timer.
+  This is also the mechanism, not just readiness signalling: `onChildMessage`
+  only calls `finishHandshake` for a `bundle-ack` while `data-drilldown-state`
+  reads `descending`, so an ack that arrives while `ascending`/`stale`, or a
+  duplicate ack once already `open`, is rejected outright — it never
+  re-triggers `finishHandshake` or resets `chainBelow`. A `drilldown-crumb`
+  update is similarly only accepted while `open`. Only `finishHandshake` (a
+  successful ack) writes `open`; only a failed/mismatched/timed-out handshake
+  writes `stale`. `frame.hidden` still only clears after that same successful
+  ack.
+- **Two message receivers, never three parties.** `onMessage` dispatches by
+  `event.source`, not by whether this document happens to be nested: a
+  message from `window.parent` (only when `nestedChild()`) goes to
+  `onParentMessage` (`bundle-hello`, `locate-projection`,
+  `drilldown-ascend-request`); a message from `frame.contentWindow` (only
+  when this document currently has its own iframe) goes to `onChildMessage`
+  (`bundle-ack`, `drilldown-escape`, `drilldown-crumb`,
+  `drilldown-ascend-done`). Both can be true for the same intermediate
+  viewer at once — that is what makes recursion work — but a document never
+  reads a message whose source is neither its own parent nor its own direct
+  child; a root and a grandchild never address each other directly.
+- **Breadcrumb aggregation.** Only the root paints `.archify-drilldown-crumb`
+  and `.archify-drilldown-silhouette`; CSS hides both on any document carrying
+  `data-bundle-nested="true"`, and `buildSilhouette` skips its clone entirely
+  when nested. Whenever a document's own handshake settles (open or stale) or
+  its `chainBelow` changes, it calls `publishChain()`: a nested document
+  posts `archify:drilldown-crumb {session, chain}` to its own parent, where
+  `chain` is its own rung (`{id, title, componentLabel}` describing its own
+  descent) followed by whatever its child last reported; the root instead
+  renders the full chain as buttons (ascend to that rung's depth) with the
+  last rung as the non-interactive current one. `back()` publishes an
+  immediate, optimistic empty chain to the parent before its own 170ms
+  ascend animation completes, matching the crumb's previous immediate-clear
+  behavior.
+- **Ascend-to-depth.** `ascendTo(toDepth)` (root's own entry point, also
+  called by a crumb rung's click) and the internal `handleAscendRequest`
+  forward `archify:drilldown-ascend-request {toDepth, session, requestId}`
+  down one hop at a time — a document with its own open child always forwards
+  the request further before deciding whether it itself must `back()` (only
+  when `myDepth + 1 > toDepth`, and only if `current` is still the same
+  descent the request was issued for), so the innermost level always
+  finishes closing first. A forwarding document waits for its child's
+  matching `archify:drilldown-ascend-done` or its own timeout, whichever
+  comes first, before acting on its own closure — and that timeout is not
+  one flat duration everywhere: it is `ASCEND_SETTLE_STEP_MS * Math.max(1,
+  maxDepth - myDepth)` (currently `250 * max(1, maxDepth - myDepth)` ms,
+  `maxDepth` read from the manifest's own `max_depth`, defaulting to `2` if
+  unavailable), so a level further from the tree's own maximum depth waits
+  proportionally longer than a level closer to it. This is sized from the
+  manifest's static depth accounting, deliberately not from `chainBelow` —
+  `chainBelow` can still be empty while a deeper handshake is in flight and
+  has not yet reported anything upward, which previously left two levels
+  both waiting the same (minimum) timeout with no guaranteed order between
+  them. Without this scaling, two independent flat (or chainBelow-derived)
+  fallbacks can expire in the wrong order and close an outer level before
+  its own child has actually finished closing what is below it; scaling by
+  `maxDepth - myDepth` guarantees the innermost level's own fallback always
+  expires first even if every ascend-done in the chain were lost and even
+  before any crumb has propagated, since each level out is at least one full
+  step longer than the level directly below it by construction. Both the
+  message and timeout paths are guarded by the session/requestId/`current` checks
+  described above, so a request superseded by a `back()`/new `descend()` in
+  the meantime cannot close the wrong descent even if its timer were somehow
+  not cancelled. `closeInnermost()` is `ascendTo` applied to one less than the deepest depth
+  this document currently knows about (`myDepth + chainBelow.length`); with
+  nothing open below the direct child it is exactly equivalent to `back()`.
+- **Escape ladder.** A single Escape/Backspace still closes one level. Focus
+  inside the innermost open document exhausts that document's own ladder
+  before it forwards `drilldown-escape` to its direct parent, unchanged in
+  shape from before N-depth support. Focus at any level that itself has an
+  open child now resolves the drilldown-active branch of the keydown ladder
+  to `closeInnermost()` rather than a plain `back()`, so pressing Escape with
+  focus on the root while a grandchild is open closes only that grandchild,
+  not the root's own direct child. `back()`'s `reveal()` also restores focus
+  to `[data-node-id=componentId]` (`{preventScroll: true}`, matching the
+  pattern used by Focus/Radar/Route Probe/Node Finder) once geometry and
+  scroll are restored.
+- **Constraints preserved, one loosened.** `data-bundle-nested="true"` still
+  hides the entire `.toolbar`, and still hides Route Probe, Semantic Radar,
+  Semantic Lens, Node Finder and the Diagram Guide button inside
+  `.diagram-nav` — but no longer hides `.diagram-nav` itself, so the zoom
+  in/out/reset controls keep working at any nested depth. `#btn-drilldown-descend`
+  is never hidden merely for being nested (`syncPassport`'s `allow` no longer
+  checks `nestedChild()`, only this document's own `level`), and
+  `onMarkClick` no longer refuses nested documents either — both are what let
+  a user descend a second and third time from inside an already-nested
+  viewer. Export, the SVG's own attributes, and the camera/zoom gesture
+  surface are unchanged; the new `data-drilldown-*`/`data-bundle-nested`
+  state lives only on `html`, so `export-cleanup.js`'s SVG-clone rules did
+  not need new entries.
+
+`drilldown-nested-browser.test.mjs` exercises three real, same-origin nested
+documents end to end: entry → child → grandchild descend gated on ACK; a
+three-rung root breadcrumb where the middle rung's click closes only the
+grandchild; an innermost-first Escape ladder with focus restored to the
+originating node (via a synthetic keydown on the target document — see the
+test's own note on why a real CDP keypress does not reliably cross two
+same-origin iframe boundaries in this harness); Escape with real focus on the
+root's own current breadcrumb rung closing only the innermost level; a
+corrupted grandchild identity producing a stale card at the intermediate
+level while the root's chain still names the whole attempted path; a forged,
+stale-session ack from a superseded descent being ignored; a session-less ack
+and a duplicate already-open ack both rejected without disturbing the
+descent or its crumb; `back()` immediately followed by a redescend
+surviving an earlier pending ascend-settle that a fixed bug would otherwise
+have let close the wrong (reopened) session; a root rung click ascending two
+levels at once with the innermost level verified to close no later than the
+outer one; switching between two sibling children showing the correct
+breadcrumb for whichever is currently open; and closing a stale grandchild
+attempt returning the intermediate level to normal while the root's crumb
+for its still-open child survives, dropping only the failed attempt's own
+rung. `drilldown-{viewer,keyboard,stale,mark,locate}.test.mjs` and
+`bundle-message-origin-browser.test.mjs` cover the single-level handshake,
+keyboard ladder, stale-card rendering, mark rendering, locate projection and
+cross-origin/message-boundary guarantees this contract keeps.
+
+## Drilldown dive contract
+
+`Archify.dive` (`dive.js`) initializes once, right after `Archify.drilldown`,
+in every rendered diagram. It never mutates `Archify.drilldown`'s own state
+directly and reads `Archify.view` only through the Camera contract's public
+`onChange`/`on`/`off`/`logicalViewport` interface — `viewer-camera.js` itself
+is untouched by this module. A diagram with no `[data-drilldown-child]` node
+anywhere in its own SVG (neither an entry's own manifest row nor a nested
+child's received subtree row) is not "capable": the toggle button stays
+`hidden` and `Z` is a no-op. That alone does not mean no listener is
+registered: a nested child with no drilldown of its own (a leaf) is still
+"escape-capable" (`!embed && nestedChild`) and keeps its `minZoomOut` and
+`gesture` listeners for the zoom-out escape below — a leaf must not lose
+its ability to escape merely because it has nothing left to dive into. Only
+a diagram that is neither capable nor a nested child registers no listener
+at all. Embed pages are never capable or escape-capable either, the same as
+Focus/Lens/Route reject embed at their own entry points.
+
+- **Belirginleştirme is always on, independent of the toggle.** The camera's
+  own `detailLevel()` `full` threshold (scale ≥ 1.75, or semantic mode) is
+  already written as `data-detail-level="full"` on `.diagram-container` by
+  `viewer-camera.js` `apply()`; CSS alone keys `.archify-drilldown-mark` and
+  the Passport `#btn-drilldown-descend` control off that existing attribute.
+  This needs no code in `dive.js` and runs whether or not zoom-dive is on.
+- **Toggle.** `Z` (ignored inside inputs, same guard as every other letter
+  shortcut) and `#btn-drilldown-dive` (`data-view="dive"`, inside
+  `.diagram-nav`) both call the same `toggle()`. State is
+  `localStorage['archify-dive']` (`'on'` sets `html[data-dive="on"]`; any
+  other value, including absent, is off), read/written through the same
+  try/catch pattern as `motion-governor.js`'s `archify-motion` key, default
+  off.
+- **Eligibility is re-checked on every settled camera snapshot.** `onChange`
+  fires twice per `apply()` (`transitioning:true` then `false`); dwell is
+  only started or re-evaluated on the `transitioning:false` call. A candidate
+  requires the toggle on, `mode === 'manual'` (never `'semantic'` — a
+  Focus/Guided/Radar reveal never dives even past scale 2.5), `scale >= 2.5`,
+  no `prefers-reduced-motion`, not the mobile-contained wide-diagram mode
+  (`window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')`,
+  the same predicate `viewer-camera.js` itself uses), none of Route Probe /
+  Semantic Lens / a playing guided story active (Presentation itself does
+  not block — it only hides chrome; deliberately excluding Intent Trace,
+  whose own "active" node is just its ordinary 90ms fine-pointer hover
+  preview — almost always true while a real mouse hovers the very node
+  being wheel-zoomed, so treating it as blocking would make the feature
+  nearly unreachable from a real mouse), no redive lock, `rearmed` (below),
+  and `Archify.drilldown.active()` false (covers a handshake in flight as
+  well as an already-open child). The candidate node is whichever
+  `[data-drilldown-child]` element's own `getBBox()` contains the center of
+  `Archify.view.logicalViewport()`, in the SVG's own user-space coordinates
+  (these node groups carry no per-node transform, so `getBBox()` is already
+  in that space). No candidate, or the candidate losing eligibility, cancels
+  any dwell in progress.
+- **Dwell.** A new candidate gets `data-dive-preview="true"` (a CSS ring on
+  its own last `rect`) and an `#archify-dive-status` status line
+  (`viewer.dive.opening`, naming the node) for 250ms. Any camera change
+  exceeding a small epsilon (0.004 scale, 0.5px x/y) versus the snapshot the
+  dwell started from cancels it immediately, on either the `transitioning:
+  true` or `false` notification — waiting for settle would let a mid-flight
+  pan or zoom complete a whole dwell unnoticed. `data-dive-preview` and the
+  status line are always cleared before the dwell either fires or is
+  cancelled; `export-cleanup.js` also strips a stray `data-dive-preview` from
+  its clone as a second line of defense, since this state lives on the same
+  live SVG node the canonical export clones. When the timer fires,
+  `Archify.drilldown.descend(id)` is called once; a `false` return (missing
+  row, depth ceiling, already active) is not retried — the preview is
+  already gone by then.
+- **Zoom-out escape (nested child only).** `Archify.view.on('minZoomOut', cb)`
+  payloads carry `{source, gestureId}`; two events are counted only when
+  their `source + ':' + gestureId` differs from the previous one recorded
+  within a 600ms window — a still-continuing physical gesture (the wheel
+  floor re-firing minZoomOut on every tick, or a held pinch) repeats the same
+  pair and is one attempt, not two. On the second distinct pair,
+  `Archify.drilldown.escapeToParent()` is called once and the log is reset.
+  This entire path is skipped outside a nested child
+  (`html[data-bundle-nested]`) and when the toggle is off; at the root,
+  `escapeToParent()` itself is a no-op, so nothing happens either way.
+- **Redive lock and `rearmed`.** A `MutationObserver` on `html`'s own
+  `data-drilldown-open` attribute sets a local lock and clears `rearmed` to
+  `false` the instant that attribute is removed (this document's own child
+  just closed, whether by `back()` or by an `ascendTo` closing it from
+  above) — the same signal `Archify.drilldown` itself uses for local
+  open/closed state. The two conditions clear independently and a new dwell
+  needs both: the lock itself clears on either (i) a fresh `pointerdown` or
+  `keydown` anywhere in the document, or (ii) an `on('gesture', cb)`
+  `'start'` phase once the document has gone ≥400ms (`GESTURE_SILENCE_MS`)
+  without any gesture activity at all — deliberately time-based and
+  document-local rather than comparing `source`/`id` pairs, since the
+  gesture that caused the ascend happened in a different document (the
+  child) with its own independent id space, so only elapsed silence can
+  tell a continuing wheel flow from a fresh one. `rearmed` flips back to
+  `true` only once the camera is later seen at `scale < 2.5` on a settled
+  snapshot — the reader has zoomed back out past the dive threshold at
+  least once since the ascend. While either the lock still holds or
+  `rearmed` is still `false`, a still-eligible camera position never
+  restarts a dwell.
+- **Nothing here changes export, print or SVG bytes.** `data-dive`,
+  `data-dive-preview` and `#archify-dive-status` are `html`/HTML-layer state
+  or (transiently) one live-SVG attribute already covered by export cleanup;
+  no new attribute is added to canonical export output.
+
+`drilldown-dive-browser.test.mjs` covers: toggle off never dives even past
+scale 2.5; `Z` then a real CDP wheel zoom onto a drilldown node dives after
+the 250ms dwell, ACK-gated the same as a manual descend; a pan mid-dwell
+cancels the preview; `prefers-reduced-motion` blocks the dive while the
+always-on highlight still applies; two distinct wheel-out gestures at the
+floor inside a nested child ascend to the parent, after which the redive
+lock blocks an immediate re-dive at the same node until a fresh pointerdown;
+a Focus-driven semantic reveal never dives; and a plain (non-bundle) diagram
+never shows the toggle and treats `Z` as a no-op.
 
 For required browser, output and package evidence, follow
 [Contributing](../CONTRIBUTING.md#local-setup-and-verification).

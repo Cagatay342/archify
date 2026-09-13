@@ -12,6 +12,7 @@ Archify 是一套基于 Node.js 的渲染与校验系统，并以 Agent Skill �
 
 - **打开就是成品** —— 五种技术图、四套视觉预设、深浅主题、内置品牌徽标，以及显式启用的有限动态
 - **合并前先看清架构变化** —— 把两份已校验快照对比为 Before / Delta / After，准确区分新增、删除、语义变化、移动和重路由
+- **定位变更并展开组件细节** —— [locate](archify/references/locate.md) 按作者声明的 ownership sidecar 分类 Git 路径；[下钻图包](archify/references/drilldown-bundles.md) 将总览连接到同目录的子图，可嵌套 2–8 层：原地下钻，用面包屑或 <kbd>Esc</kbd> 返回，也可开启缩放下钻（<kbd>Z</kbd>）——放大超过 2.5× 即自动进入组件
 - **每次探索都有依据** —— 搜索节点、按需打开版本校验过的源码、追踪作者定义的上下游可达范围与精确路径、对比角色、播放故事，但不编造拓扑
 - **一个文件即可放心交付** —— Typed JSON IR 和确定性校验生成独立 HTML，并支持 PNG、SVG、WebM 与 1200×630 分享卡片
 
@@ -24,7 +25,7 @@ Archify 是一套基于 Node.js 的渲染与校验系统，并以 Agent Skill �
 **[在线项目页](https://tt-a1i.github.io/archify/)** · **[场景选图指南](https://tt-a1i.github.io/archify/guide.html)** · **[Proof Lab](https://tt-a1i.github.io/archify/gallery.html)**
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
 使用 Cursor？打开[可切换 Agent 的快速开始页](https://tt-a1i.github.io/archify/start.html?agent=cursor&type=architecture)，即可获得准确的全局或当前仓库安装命令。
 
@@ -93,19 +94,19 @@ Export 菜单支持复制 PNG，并下载静态或动态格式：
 ### 1. 安装
 
 ```bash
-npx skills add tt-a1i/archify -g
+npx skills add Cagatay342/archify -g
 ```
 
 显式、非交互地安装到 Cursor：
 
 ```bash
-npx -y skills add tt-a1i/archify --skill archify --agent cursor --global --copy --yes
+npx -y skills add Cagatay342/archify --skill archify --agent cursor --global --copy --yes
 ```
 
 如果只想临时体验：
 
 ```bash
-npx skills use tt-a1i/archify@archify --agent codex
+npx skills use Cagatay342/archify@archify --agent codex
 ```
 
 DeepSeek Harness（社区集成、显式启用）：运行 `dsh plugin --profile web add @tt-a1i/archify-dsh@0.1.0`；参见[兼容范围、限制与安全说明](integrations/deepseek-harness/README.md)。[Agent 切换器](https://tt-a1i.github.io/archify/start.html?agent=cursor&type=architecture)只为 `cursor`、`codex`、`claude-code` 和 `opencode` 生成命令。Raven 仅支持 ZIP 手动安装：将 [`archify.zip`](archify.zip) 解压到 `~/.raven/workspace/skills`，解压后会得到 `~/.raven/workspace/skills/archify`；Raven 不属于切换器目标。
@@ -121,10 +122,9 @@ DeepSeek Harness（社区集成、显式启用）：运行 `dsh plugin --profile
 需要源码证据时，打开仓库后改用：
 
 ```text
-分析这个仓库，然后使用 archify 生成一张高层运行时架构图。
-只保留 8–12 个核心组件，突出一条主要路径，并标出外部依赖与信任边界。
-辅助信息放进说明卡片，不要继续增加连线。
+用 archify 把这个仓库的架构绘制成嵌套下钻图包，放在 docs/diagrams/ 下。
 ```
+Archify 先画外层总览，再查看每个组件的源码，只为真正有内部结构的组件生成子图（独立子图并行创作，不为凑层级填充），最后运行 `archify bundle <dir>` 校验整棵树。三层及以上请通过 HTTP 提供目录。
 
 ### 3. 在对话中细调
 
@@ -244,7 +244,8 @@ node bin/archify.mjs deliver workflow examples/agent-tool-call.workflow.json /tm
 | 播放故事 / 切换章节 | <kbd>P</kbd> / <kbd>[</kbd> <kbd>]</kbd> |
 | 进入 Presentation Stage | <kbd>F</kbd> |
 | 选择视觉风格（<kbd>S</kbd> 循环）/ 切换主题 / 打开 Export | <kbd>S</kbd> / <kbd>T</kbd> / <kbd>E</kbd> |
-| 缩放或复位 | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> |
+| 缩放或复位 | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>/wheel/pinch/<kbd>Z</kbd>-dive |
+| 下钻进入组件 / 返回上层 | 下钻标记或语义护照中的 `Descend` / <kbd>Esc</kbd>、<kbd>Backspace</kbd>、面包屑；<kbd>Z</kbd> 让缩放本身触发下钻，在 1× 连续两次缩小即返回 |
 
 稳定链接可以恢复 `#focus=<id>`、`#focus=<id>&reach=upstream|downstream`、`#relation=<id>`、`#route=<source>~<target>`、`#lens=<kind>~<kind>` 和 `#view=<view-id>`。读者触发的动态有限运行、遵守 `prefers-reduced-motion`，并且不会进入标准导出。
 

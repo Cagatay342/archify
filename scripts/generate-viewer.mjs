@@ -20,6 +20,7 @@ const fragments = [
   ['/* ARCHIFY:ROUTE_PROBE */', 'route-probe.js'],
   ['/* ARCHIFY:GUIDED_VIEWS */', 'guided-views.js'],
   ['/* ARCHIFY:EXPORT_CLEANUP */', 'export-cleanup.js'],
+  ['/* ARCHIFY:DIVE */', 'dive.js'],
 ];
 
 try {

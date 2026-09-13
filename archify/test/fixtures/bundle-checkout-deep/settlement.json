@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Card Network Settlement",
+    "quality_profile": "showcase",
+    "viewBox": [720, 300]
+  },
+  "components": [
+    { "id": "acquirer", "type": "external", "label": "Acquirer", "sublabel": "PSP-facing", "pos": [40, 120], "size": [130, 60] },
+    { "id": "clearing", "type": "backend", "label": "Clearing House", "sublabel": "batch", "pos": [250, 120], "size": [130, 60] },
+    { "id": "settle-ledger", "type": "database", "label": "Settlement Ledger", "sublabel": "T+1", "pos": [460, 120], "size": [130, 60] }
+  ],
+  "connections": [
+    { "id": "acquirer-clearing", "from": "acquirer", "to": "clearing", "label": "batch" },
+    { "id": "clearing-ledger", "from": "clearing", "to": "settle-ledger", "label": "post" }
+  ]
+}

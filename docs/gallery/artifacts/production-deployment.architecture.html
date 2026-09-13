@@ -859,6 +859,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       padding-bottom: calc(1.5rem + var(--archify-nav-reserve));
       overflow: hidden;
       position: relative;
+      touch-action: pan-x pan-y;
     }
 
     html[data-preset="signal-flow"] .diagram-container {
@@ -1411,9 +1412,41 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       pointer-events: none;
     }
     .overview-map-feedback[hidden] { display: none; }
+    .archify-dive-status {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 13;
+      max-width: min(16rem, calc(100% - 2rem));
+      margin: 0;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid color-mix(in srgb, var(--frontend-stroke) 52%, var(--toolbar-border));
+      border-radius: 0.5rem;
+      background: var(--toolbar-menu-bg);
+      color: var(--toolbar-text);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      font-size: 0.62rem;
+      line-height: 1.35;
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+    /* Stays mounted (never [hidden]) so aria-live text changes are
+       reliably announced by assistive tech; collapses to zero visual
+       footprint when empty instead of being removed from the a11y tree. */
+    .archify-dive-status:empty {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    html[data-embed="true"] .archify-dive-status { display: none; }
     .focus-chip[data-radar-yielded="true"] { display: none !important; }
     .diagram-nav #btn-route-probe[aria-pressed="true"] {
       color: var(--backend-stroke);
+      background: var(--toolbar-hover);
+    }
+    .diagram-nav #btn-drilldown-dive[aria-pressed="true"] {
+      color: var(--frontend-stroke);
       background: var(--toolbar-hover);
     }
     .diagram-nav #btn-semantic-lens[aria-expanded="true"],
@@ -3758,6 +3791,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         overscroll-behavior-x: contain;
         scrollbar-width: thin;
         scroll-behavior: smooth;
+        touch-action: auto;
       }
       html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] > svg {
         min-width: 720px;
@@ -4351,6 +4385,189 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     svg[data-focus-active] [data-focus-match] { opacity: 1; }
     svg[data-focus-active] [data-focus-selected] {
       filter: drop-shadow(0 0 10px var(--frontend-stroke));
+    }
+
+    .archify-drilldown-mark {
+      color: var(--frontend-stroke);
+      pointer-events: auto;
+    }
+    .archify-drilldown-mark rect,
+    .archify-drilldown-mark path {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1;
+    }
+    /* Belirginleştirme: always on, independent of the zoom-dive toggle.
+       detail-level "full" is the camera's own >=1.75 scale (or semantic
+       mode) threshold, written on .diagram-container by viewer-camera.js
+       apply() — never mirrored onto html for this purpose. */
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark {
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.22);
+    }
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark rect,
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark path {
+      stroke-width: 1.8;
+    }
+    .diagram-container[data-detail-level="full"] #btn-drilldown-descend:not([hidden]) {
+      border: 1px solid var(--frontend-stroke);
+      border-radius: 0.35rem;
+      color: var(--frontend-stroke);
+    }
+    /* Deliberately NOT "svg [data-node-id]…" — export.js's own CSS
+       harvest (serializeSvg's hostStyle) copies any rule whose selector
+       list starts with "svg" into the exported/downloaded SVG's embedded
+       style, which would add new bytes to canonical export output even
+       though the attribute itself is always stripped by export cleanup.
+       ".diagram-container …" reaches the same live nodes (the SVG is
+       always .diagram-container's direct child) without matching that
+       harvest, keeping export byte-identical. */
+    .diagram-container [data-node-id][data-dive-preview="true"] > rect:last-of-type {
+      stroke: var(--frontend-stroke);
+      stroke-width: 2.4;
+      stroke-dasharray: 4 3;
+    }
+    svg[data-locate-active] [data-node-id] { opacity: 0.13; }
+    svg[data-locate-active] [data-node-id][data-locate-state="touched"] { opacity: 1; }
+    svg[data-locate-active] [data-node-id][data-locate-state="stale"] { opacity: 1; }
+    svg[data-locate-active] [data-node-id][data-locate-state="touched"] > rect:last-of-type {
+      stroke: var(--frontend-stroke);
+    }
+    svg[data-locate-active] [data-node-id][data-locate-state="stale"] > rect:last-of-type {
+      stroke: #7a1f2b;
+    }
+    [data-theme="dark"] svg[data-locate-active] [data-node-id][data-locate-state="stale"] > rect:last-of-type,
+    svg[data-theme="dark"][data-locate-active] [data-node-id][data-locate-state="stale"] > rect:last-of-type {
+      stroke: #e38790;
+    }
+    .archify-locate-chip {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 0.4rem;
+      padding: 0.18rem 0.42rem;
+      border: 1px solid var(--toolbar-border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .archify-locate-chip[hidden] { display: none; }
+    .archify-drilldown-host {
+      display: none;
+      flex-direction: column;
+      gap: 0.55rem;
+      min-height: 0;
+    }
+    html[data-drilldown-level="1"] .archify-drilldown-host,
+    html[data-drilldown-open="true"] .archify-drilldown-host {
+      display: flex;
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      overflow: auto;
+      background: var(--panel);
+    }
+    html[data-drilldown-level="1"] .diagram-container > svg[data-bundle-role],
+    html[data-drilldown-open="true"] .diagram-container > svg[data-bundle-role] {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .archify-drilldown-crumb {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+    }
+    .archify-drilldown-crumb button {
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+    .archify-drilldown-crumb button:focus-visible {
+      outline: 2px solid var(--frontend-stroke);
+      outline-offset: 2px;
+    }
+    .archify-drilldown-silhouette {
+      height: 96px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .archify-drilldown-silhouette svg {
+      display: block;
+      height: 96px;
+      width: auto;
+    }
+    .archify-drilldown-frame {
+      display: block;
+      width: 100%;
+      min-height: 28rem;
+      border: 1px solid var(--toolbar-border);
+      background: transparent;
+    }
+    .archify-drilldown-stale {
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--toolbar-border);
+      color: var(--text);
+    }
+    .archify-drilldown-stale[hidden] { display: none; }
+    .archify-drilldown-stale code { font: inherit; }
+    html[data-embed="true"] .archify-drilldown-host,
+    html[data-embed="true"] .archify-locate-chip,
+    html[data-embed="true"] #btn-drilldown-descend { display: none !important; }
+    html[data-bundle-nested="true"] #btn-present,
+    html[data-bundle-nested="true"] .guided-views,
+    html[data-bundle-nested="true"] .toolbar,
+    html[data-bundle-nested="true"] .archify-drilldown-crumb,
+    html[data-bundle-nested="true"] .archify-drilldown-silhouette,
+    html[data-bundle-nested="true"] .diagram-nav #btn-route-probe,
+    html[data-bundle-nested="true"] .diagram-nav #btn-overview-map,
+    html[data-bundle-nested="true"] .diagram-nav #btn-semantic-lens,
+    html[data-bundle-nested="true"] .diagram-nav #btn-node-finder,
+    html[data-bundle-nested="true"] .diagram-nav #btn-diagram-guide,
+    html[data-drilldown-level="1"] #btn-present,
+    html[data-drilldown-level="1"] .guided-views { display: none !important; }
+    /* Faz 4 UX note (Fable): a nested child still renders its own full
+       page chrome (title/subtitle header, page padding) inside its
+       iframe, so each additional descend level compounds that same
+       fixed chrome cost against a shrinking iframe box, leaving less and
+       less room for the actual diagram the deeper you go. The toolbar/
+       legend column that .header's own padding-right normally reserves
+       space for is already hidden above on a nested child, so that
+       reserved space is pure waste here; the fixes below only reclaim
+       chrome the child was already not using. Pure CSS, no behavior
+       change: the title/subtitle/crumb text and every element's
+       existence are unchanged, only their spacing shrinks. */
+    /* padding-inline only (not the shorthand): padding-block already has
+       its own finer-grained, height-aware rules elsewhere (the >=768px
+       &&<=920px-height breakpoint, and html[data-nav-stage-rail="true"]'s
+       own tighter 0.375rem) that a nested child should keep inheriting
+       rather than override with one flat number. */
+    html[data-bundle-nested="true"] body { padding-inline: 0.85rem; }
+    html[data-bundle-nested="true"] .header {
+      margin-bottom: 0.6rem;
+      padding-right: 0;
+    }
+    html[data-bundle-nested="true"] .header-row { margin-bottom: 0.25rem; }
+    html[data-bundle-nested="true"] .diagram-container { padding: 0.5rem; }
+    svg [data-node-id][data-locate-inside] [data-locate-inside-count] {
+      font-size: 8px;
+      font-weight: 600;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html[data-drilldown-state] .archify-drilldown-host { transition: none; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      html[data-drilldown-anim="descending"] .archify-drilldown-host,
+      html[data-drilldown-anim="ascending"] .archify-drilldown-host {
+        transition: opacity 170ms ease;
+      }
     }
 
     /* Authored Reachability is a bounded graph query over the relationships
@@ -5087,7 +5304,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
     <script id="archify-guided-views-data" type="application/json">[{"id":"request-boundary","label":"Request crosses the edge","focus":["clients","edge","gateway","api_a","api_b"],"note":"Follow public traffic into the private application network."},{"id":"state-ownership","label":"State and ownership","focus":["api_a","api_b","redis","postgres","replica"],"note":"Separate stateless platform workloads from data-team-owned state."},{"id":"async-operations","label":"Async and operations","focus":["api_b","events","worker","audit","observability"],"note":"See the asynchronous work and the evidence it emits."}]</script>
 
-    <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"S cycles","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.story":"the guided story","viewer.owner.chapter":"the active chapter","viewer.owner.chapterPreview":"the chapter delta preview","viewer.owner.handoff":"the chapter handoff","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyShareCard":"Copy Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.period":"Clipboard image write not supported by this browser.","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.copiedShare":"Copied Share Card","viewer.export.downloadedShare":"Downloaded Share Card","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Route: {source} → {target} · {count} directed hop","viewer.export.card.routeSummary.other":"Route: {source} → {target} · {count} directed hops","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.card.defaultBadge":"ARCHIFY · {preset} · {theme}","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guided.region":"Guided diagram views","viewer.guided.previous":"Previous guided view","viewer.guided.previous.title":"Previous guided view ([)","viewer.guided.next":"Next guided view","viewer.guided.next.title":"Next guided view (])","viewer.guided.views":"Guided views","viewer.guided.explore":"Explore this system","viewer.guided.intro":"Step through curated paths without changing the source diagram.","viewer.guided.trail":"Story trail","viewer.guided.beat":"Beat","viewer.guided.nextBeat":"Next","viewer.guided.play":"Play guided story","viewer.guided.play.title":"Play guided story (P)","viewer.guided.pause":"Pause guided story","viewer.guided.pause.title":"Pause guided story (P)","viewer.guided.replay":"Replay guided story","viewer.guided.replay.title":"Replay guided story (P)","viewer.guided.playStory":"Play story","viewer.guided.pauseStory":"Pause","viewer.guided.replayStory":"Replay story","viewer.guided.motionUnavailable":"Story playback unavailable while motion is Still","viewer.guided.enableMotion":"Switch motion to Live to play the guided story","viewer.guided.selectBeatLink":"Select a Story Beat to copy its exact link","viewer.guided.copyMoment":"Copy moment","viewer.guided.momentCopied":"Moment link copied","viewer.guided.momentCopyFailed":"Could not copy story moment link","viewer.guided.copied":"Copied","viewer.guided.copyFailed":"Copy failed","viewer.guided.showAll":"Show all","viewer.guided.showAll.aria":"Show entire diagram","viewer.guided.chapters":"Story chapters","viewer.guided.storyTrail":"Story trail for {label}: {count} beats","viewer.guided.chapter.open":"Open chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.current":"Current chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.selectedNodes":"{count} selected nodes","viewer.guided.chapter.stops":"{count} stops","viewer.guided.chapter.stop.one":"{count} stop","viewer.guided.chapter.stop.other":"{count} stops","viewer.guided.chapter.current.title":"{label} — current chapter, {count} stops","viewer.guided.chapter.delta.expanded":"{stay} stay, {enter} enter, {leave} leave","viewer.guided.chapter.delta.aria":"Open chapter {index} of {total}: {label}. Chapter focus delta: {delta}","viewer.guided.chapter.delta.title":"{label} — {delta} chapter focus","viewer.guided.handoff":"{from} → {to} · via {label}","viewer.guided.share.chapter":"Chapter {index} / {total}","viewer.guided.share.initial":"Chapter 01 / 01","viewer.guided.share.default":"Guided chapter","viewer.guided.state.ready":"Ready","viewer.guided.state.playing":"Playing","viewer.guided.state.settled":"Settled","viewer.guided.state.paused":"Paused","viewer.guided.state.pinned":"Pinned","viewer.guided.state.still":"Still","viewer.guided.share.step":"Step {index} / {total} · {label}","viewer.guided.share.staticMoment":"{step} · Static moment","viewer.guided.share.complete":"{count} steps complete · {note}","viewer.guided.share.settled":"Path settled for reading.","viewer.guided.share.staticPath":"{count} steps · Static path","viewer.guided.share.ready":"{count} steps · Ready","viewer.guided.share.aria":"{state} chapter {index} of {total}: {label}. {beat}. {route}","viewer.guided.beat.start":"Beat {index} / {total} · {label} · starting point","viewer.guided.beat.forward":"Beat {index} / {total} · {from} → {to}","viewer.guided.beat.reverse":"Beat {index} / {total} · {from} → {to} · reverse authored link","viewer.guided.beat.multiple":"Beat {index} / {total} · {from} ⇄ {to} · {count} authored links","viewer.guided.beat.group":"Beat {index} / {total} · {from} · {to} · grouped · no direct link","viewer.guided.beat.aria.prefix":"Story beat {index} of {total}: {label}. ","viewer.guided.beat.aria.start":"Starting point.","viewer.guided.beat.aria.forward":"From {from} through one authored forward relationship.","viewer.guided.beat.aria.reverse":"From {from}; the authored relationship points from {to} to {from}.","viewer.guided.beat.aria.multiple":"From {from} through {count} authored relationships; shown without arbitrary motion.","viewer.guided.beat.aria.group":"Grouped from {from} with no direct authored relationship.","viewer.guided.caption.start":"Starting point","viewer.guided.caption.grouped":"Grouped transition · no direct authored link","viewer.guided.caption.more":" +{count} more","viewer.guided.caption.reverse":"Reverse authored relationship","viewer.guided.caption.relationships":"{count} authored relationships","viewer.guided.caption.relationship":"Authored relationship","viewer.guided.caption.direction":"authored direction: {from} → {to}","viewer.guided.caption.starting":"Authored starting point","viewer.guided.beatLink":"Copy link to current story moment: Beat {index} of {total}: {label}","viewer.guided.noStory":"This diagram has no authored guided story.","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.story":"Play the guided story","viewer.guide.story.hint":"Walk the authored chapters and real relationships.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.facts":"{nodes} · {relationships} · {views}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.fact.view.one":"{count} guided view","viewer.guide.fact.view.other":"{count} guided views","viewer.guide.story.available.one":"Walk {count} authored chapter and its real relationships.","viewer.guide.story.available.other":"Walk {count} authored chapters and their real relationships.","viewer.guide.story.unavailable":"No authored guided story in this diagram.","viewer.guide.open":"Open diagram guide","viewer.guide.noStory":"This diagram has no authored guided story.","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Route probe","viewer.route.start":"Choose a start node","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Traced route","viewer.route.pickTwo":"Pick two semantic nodes on the diagram","viewer.route.pickOne":"Pick a semantic node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Choose the source, then the destination. Direction matters.","viewer.route.destination":"Choose a destination from {label}","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"A route needs two distinct semantic nodes.","viewer.route.unreachable":"No directed route to {label}","viewer.route.unreachable.detail":"{target} is not reachable from {source}. Pick a highlighted destination.","viewer.route.start.instructions":"Select the source. The next step will reveal only directed destinations.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest authored route","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} directed hop","viewer.route.overview.hop.other":"{count} directed hops","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} directed destination available. Pick a highlighted node.","viewer.route.destination.count.other":"{count} directed destinations available. Pick a highlighted node.","viewer.route.noOutgoing":"No outgoing route starts here. Clear and choose another source.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
+    <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"S cycles","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.story":"the guided story","viewer.owner.chapter":"the active chapter","viewer.owner.chapterPreview":"the chapter delta preview","viewer.owner.handoff":"the chapter handoff","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyShareCard":"Copy Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.period":"Clipboard image write not supported by this browser.","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.copiedShare":"Copied Share Card","viewer.export.downloadedShare":"Downloaded Share Card","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Route: {source} → {target} · {count} directed hop","viewer.export.card.routeSummary.other":"Route: {source} → {target} · {count} directed hops","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.card.defaultBadge":"ARCHIFY · {preset} · {theme}","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guided.region":"Guided diagram views","viewer.guided.previous":"Previous guided view","viewer.guided.previous.title":"Previous guided view ([)","viewer.guided.next":"Next guided view","viewer.guided.next.title":"Next guided view (])","viewer.guided.views":"Guided views","viewer.guided.explore":"Explore this system","viewer.guided.intro":"Step through curated paths without changing the source diagram.","viewer.guided.trail":"Story trail","viewer.guided.beat":"Beat","viewer.guided.nextBeat":"Next","viewer.guided.play":"Play guided story","viewer.guided.play.title":"Play guided story (P)","viewer.guided.pause":"Pause guided story","viewer.guided.pause.title":"Pause guided story (P)","viewer.guided.replay":"Replay guided story","viewer.guided.replay.title":"Replay guided story (P)","viewer.guided.playStory":"Play story","viewer.guided.pauseStory":"Pause","viewer.guided.replayStory":"Replay story","viewer.guided.motionUnavailable":"Story playback unavailable while motion is Still","viewer.guided.enableMotion":"Switch motion to Live to play the guided story","viewer.guided.selectBeatLink":"Select a Story Beat to copy its exact link","viewer.guided.copyMoment":"Copy moment","viewer.guided.momentCopied":"Moment link copied","viewer.guided.momentCopyFailed":"Could not copy story moment link","viewer.guided.copied":"Copied","viewer.guided.copyFailed":"Copy failed","viewer.guided.showAll":"Show all","viewer.guided.showAll.aria":"Show entire diagram","viewer.guided.chapters":"Story chapters","viewer.guided.storyTrail":"Story trail for {label}: {count} beats","viewer.guided.chapter.open":"Open chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.current":"Current chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.selectedNodes":"{count} selected nodes","viewer.guided.chapter.stops":"{count} stops","viewer.guided.chapter.stop.one":"{count} stop","viewer.guided.chapter.stop.other":"{count} stops","viewer.guided.chapter.current.title":"{label} — current chapter, {count} stops","viewer.guided.chapter.delta.expanded":"{stay} stay, {enter} enter, {leave} leave","viewer.guided.chapter.delta.aria":"Open chapter {index} of {total}: {label}. Chapter focus delta: {delta}","viewer.guided.chapter.delta.title":"{label} — {delta} chapter focus","viewer.guided.handoff":"{from} → {to} · via {label}","viewer.guided.share.chapter":"Chapter {index} / {total}","viewer.guided.share.initial":"Chapter 01 / 01","viewer.guided.share.default":"Guided chapter","viewer.guided.state.ready":"Ready","viewer.guided.state.playing":"Playing","viewer.guided.state.settled":"Settled","viewer.guided.state.paused":"Paused","viewer.guided.state.pinned":"Pinned","viewer.guided.state.still":"Still","viewer.guided.share.step":"Step {index} / {total} · {label}","viewer.guided.share.staticMoment":"{step} · Static moment","viewer.guided.share.complete":"{count} steps complete · {note}","viewer.guided.share.settled":"Path settled for reading.","viewer.guided.share.staticPath":"{count} steps · Static path","viewer.guided.share.ready":"{count} steps · Ready","viewer.guided.share.aria":"{state} chapter {index} of {total}: {label}. {beat}. {route}","viewer.guided.beat.start":"Beat {index} / {total} · {label} · starting point","viewer.guided.beat.forward":"Beat {index} / {total} · {from} → {to}","viewer.guided.beat.reverse":"Beat {index} / {total} · {from} → {to} · reverse authored link","viewer.guided.beat.multiple":"Beat {index} / {total} · {from} ⇄ {to} · {count} authored links","viewer.guided.beat.group":"Beat {index} / {total} · {from} · {to} · grouped · no direct link","viewer.guided.beat.aria.prefix":"Story beat {index} of {total}: {label}. ","viewer.guided.beat.aria.start":"Starting point.","viewer.guided.beat.aria.forward":"From {from} through one authored forward relationship.","viewer.guided.beat.aria.reverse":"From {from}; the authored relationship points from {to} to {from}.","viewer.guided.beat.aria.multiple":"From {from} through {count} authored relationships; shown without arbitrary motion.","viewer.guided.beat.aria.group":"Grouped from {from} with no direct authored relationship.","viewer.guided.caption.start":"Starting point","viewer.guided.caption.grouped":"Grouped transition · no direct authored link","viewer.guided.caption.more":" +{count} more","viewer.guided.caption.reverse":"Reverse authored relationship","viewer.guided.caption.relationships":"{count} authored relationships","viewer.guided.caption.relationship":"Authored relationship","viewer.guided.caption.direction":"authored direction: {from} → {to}","viewer.guided.caption.starting":"Authored starting point","viewer.guided.beatLink":"Copy link to current story moment: Beat {index} of {total}: {label}","viewer.guided.noStory":"This diagram has no authored guided story.","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.story":"Play the guided story","viewer.guide.story.hint":"Walk the authored chapters and real relationships.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.shortcut.back":"Back / leave drilldown","viewer.drilldown.descend":"Descend","viewer.drilldown.back":"Back","viewer.drilldown.stale":"child diagram is stale","viewer.drilldown.stale.title":"Child diagram is stale","viewer.drilldown.expectedId":"expected id:","viewer.drilldown.actualId":"actual id:","viewer.drilldown.expectedSha":"expected spec sha256:","viewer.drilldown.actualSha":"actual:","viewer.drilldown.reason":"reason:","viewer.drilldown.repair":"archify bundle \u003cdir\u003e","viewer.dive.opening":"Opening “{label}”…","viewer.locate.filesInside":"{count} FILES TOUCHED INSIDE","viewer.guide.facts":"{nodes} · {relationships} · {views}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.fact.view.one":"{count} guided view","viewer.guide.fact.view.other":"{count} guided views","viewer.guide.story.available.one":"Walk {count} authored chapter and its real relationships.","viewer.guide.story.available.other":"Walk {count} authored chapters and their real relationships.","viewer.guide.story.unavailable":"No authored guided story in this diagram.","viewer.guide.open":"Open diagram guide","viewer.guide.noStory":"This diagram has no authored guided story.","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Route probe","viewer.route.start":"Choose a start node","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Traced route","viewer.route.pickTwo":"Pick two semantic nodes on the diagram","viewer.route.pickOne":"Pick a semantic node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Choose the source, then the destination. Direction matters.","viewer.route.destination":"Choose a destination from {label}","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"A route needs two distinct semantic nodes.","viewer.route.unreachable":"No directed route to {label}","viewer.route.unreachable.detail":"{target} is not reachable from {source}. Pick a highlighted destination.","viewer.route.start.instructions":"Select the source. The next step will reveal only directed destinations.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest authored route","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} directed hop","viewer.route.overview.hop.other":"{count} directed hops","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} directed destination available. Pick a highlighted node.","viewer.route.destination.count.other":"{count} directed destinations available. Pick a highlighted node.","viewer.route.noOutgoing":"No outgoing route starts here. Clear and choose another source.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.dive":"Auto zoom-dive","viewer.nav.dive.title":"Auto zoom-dive (Z)","viewer.nav.dive.short":"DIVE","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
       <div class="guided-view-copy">
@@ -5425,6 +5642,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           </g>
         </g>
       </svg>
+      <div class="archify-drilldown-host no-print" id="archify-drilldown-host" hidden>
+        <nav class="archify-drilldown-crumb" id="archify-drilldown-crumb" aria-label="Back"></nav>
+        <div class="archify-drilldown-silhouette" id="archify-drilldown-silhouette" aria-hidden="true"></div>
+        <iframe class="archify-drilldown-frame" id="archify-drilldown-frame" title="Descend" hidden></iframe>
+        <div class="archify-drilldown-stale" id="archify-drilldown-stale" hidden role="status"></div>
+      </div>
       <p class="intent-trace-status no-print" id="intent-trace-status" role="status" aria-live="polite" aria-atomic="true"></p>
       <div class="share-chapter-cue no-print" id="share-chapter-cue" hidden role="status" aria-live="polite">
         <div class="share-chapter-index">
@@ -5480,7 +5703,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           </button>
         </div>
         <div class="diagram-guide-shortcuts" aria-label="Additional keyboard shortcuts">
-          <span><kbd>E</kbd> Export</span><span><kbd>T</kbd> Theme</span><span><kbd>S</kbd> Style</span><span><kbd>0</kbd> Reset</span><span><kbd>+</kbd> Zoom in</span><span><kbd>-</kbd> Zoom out</span><span><kbd>Esc</kbd> Close</span>
+          <span><kbd>E</kbd> Export</span><span><kbd>T</kbd> Theme</span><span><kbd>S</kbd> Style</span><span><kbd>0</kbd> Reset</span><span><kbd>+</kbd> Zoom in</span><span><kbd>-</kbd> Zoom out</span><span><kbd>Esc</kbd> Close</span><span><kbd>⌫</kbd> Back / leave drilldown</span>
         </div>
         <p class="diagram-guide-feedback" id="diagram-guide-feedback" aria-live="polite"></p>
       </div>
@@ -5531,6 +5754,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
               </div>
               <small class="semantic-passport-reach-status" id="focus-reach-status" hidden aria-live="polite"></small>
             </div>
+            <button id="btn-drilldown-descend" type="button" hidden>Descend</button>
+            <span class="archify-locate-chip" id="archify-locate-chip" hidden></span>
           </div>
           <div class="relationship-lens-actions">
             <button id="btn-focus-clear" type="button" aria-label="Close semantic passport" title="Close">&#215;</button>
@@ -5596,12 +5821,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="overview-map-hint" aria-hidden="true"><span>Click node</span><span>Drag to pan</span></div>
       </div>
       <p class="overview-map-feedback no-print" id="overview-map-feedback" role="status" aria-live="polite" hidden>Semantic radar needs more MAP space.</p>
+      <p class="archify-dive-status no-print" id="archify-dive-status" role="status" aria-live="polite"></p>
       <div class="diagram-nav no-print" role="toolbar" aria-label="Diagram view controls">
         <button id="btn-route-probe" type="button" aria-label="Trace a directed route" aria-pressed="false" aria-controls="route-probe" title="Trace route (R)">PATH</button>
         <button id="btn-overview-map" type="button" aria-label="Open semantic radar" aria-expanded="false" aria-controls="overview-map" title="Semantic radar (M)">MAP</button>
         <button id="btn-semantic-lens" type="button" aria-label="Open semantic lens" aria-haspopup="dialog" aria-expanded="false" aria-pressed="false" aria-controls="semantic-lens" title="Semantic lens (L)">LENS</button>
         <button id="btn-node-finder" type="button" aria-label="Find a node" aria-haspopup="dialog" aria-expanded="false" aria-controls="node-finder" title="Find a node (/)" data-node-finder-trigger><span class="diagram-nav-icon find" aria-hidden="true"></span></button>
         <button id="btn-diagram-guide" type="button" aria-label="Open diagram guide" aria-haspopup="dialog" aria-expanded="false" aria-controls="diagram-guide" title="Diagram guide (?)"><span class="diagram-nav-icon guide" aria-hidden="true"></span></button>
+        <button id="btn-drilldown-dive" data-view="dive" type="button" hidden aria-pressed="false" aria-label="Auto zoom-dive" title="Auto zoom-dive (Z)">DIVE</button>
         <button data-view="out" type="button" aria-label="Zoom out" title="Zoom out (-)"><span class="diagram-nav-icon minus" aria-hidden="true"></span></button>
         <button data-view="reset" type="button" aria-label="Reset diagram view" title="Reset view (0)"><span class="diagram-nav-detail" data-view-detail hidden>READ</span><span class="diagram-nav-percent" data-view-percent>100%</span></button>
         <button data-view="in" type="button" aria-label="Zoom in" title="Zoom in (+)"><span class="diagram-nav-icon plus" aria-hidden="true"></span></button>
@@ -5939,6 +6166,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         clone.style.removeProperty('clip-path');
         clone.removeAttribute('data-view-scale');
         clone.removeAttribute('data-focus-active');
+        clone.removeAttribute('data-locate-active');
         clone.removeAttribute('data-reach-active');
         clone.removeAttribute('data-lens-active');
         clone.removeAttribute('data-lens-flow-count');
@@ -6033,6 +6261,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           el.removeAttribute('data-focus-match');
           el.removeAttribute('data-focus-selected');
         });
+        Array.prototype.forEach.call(clone.querySelectorAll('[data-locate-state], [data-locate-inside]'), function (el) {
+          el.removeAttribute('data-locate-state');
+          el.removeAttribute('data-locate-inside');
+        });
+        Array.prototype.forEach.call(clone.querySelectorAll('[data-dive-preview]'), function (el) {
+          el.removeAttribute('data-dive-preview');
+        });
+        Array.prototype.forEach.call(clone.querySelectorAll('[data-locate-inside-count]'), function (el) {
+          el.remove();
+        });
         Array.prototype.forEach.call(clone.querySelectorAll('[data-reach-match], [data-reach-origin], [data-reach-depth]'), function (el) {
           el.removeAttribute('data-reach-match');
           el.removeAttribute('data-reach-origin');
@@ -6089,6 +6327,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         });
         return !clone.hasAttribute('data-view-scale') &&
           !clone.hasAttribute('data-focus-active') &&
+          !clone.hasAttribute('data-locate-active') &&
           !clone.hasAttribute('data-reach-active') &&
           !clone.hasAttribute('data-lens-active') &&
           !clone.hasAttribute('data-lens-flow-count') &&
@@ -6112,7 +6351,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           !clone.hasAttribute('data-chapter-preview') &&
           !clone.style.getPropertyValue('transform') &&
           !clone.style.getPropertyValue('clip-path') &&
-          clone.querySelectorAll('[data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-reach-match], [data-reach-origin], [data-reach-depth], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth], [data-source-evidence-beacon], [data-source-evidence-count], [data-source-evidence-original-label], [data-detail], [data-detail-anchor]').length === 0;
+          clone.querySelectorAll('[data-locate-state], [data-locate-inside], [data-locate-inside-count], [data-dive-preview], [data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-reach-match], [data-reach-origin], [data-reach-depth], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth], [data-source-evidence-beacon], [data-source-evidence-count], [data-source-evidence-original-label], [data-detail], [data-detail-anchor]').length === 0;
       }
 
 
@@ -7563,7 +7802,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
       html.setAttribute('data-motion-capable', 'true');
       btn.hidden = false;
-      readerPaused = readStored() === 'still';
+      readerPaused = readStored() === 'still'
+        || (window.parent !== window && svg && svg.getAttribute('data-bundle-role') === 'child');
       btn.addEventListener('click', function () { setPaused(!readerPaused); });
       if (motionQuery) {
         if (typeof motionQuery.addEventListener === 'function') motionQuery.addEventListener('change', render);
@@ -8058,6 +8298,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         semanticId.textContent = id;
         semanticId.hidden = false;
         renderSourceEvidence(id);
+        if (Archify.drilldown && typeof Archify.drilldown.syncPassport === 'function') {
+          Archify.drilldown.syncPassport(id, node);
+        }
       }
       function relationshipsFor(id, byId) {
         var seen = {};
@@ -11146,6 +11389,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         var style = window.getComputedStyle(element);
         return element.getBoundingClientRect().height + number(style.marginTop) + number(style.marginBottom);
       }
+      function descended() {
+        return Boolean(html.getAttribute('data-drilldown-level'));
+      }
       function eligible() {
         return Boolean(
           shell && diagram && svg && ratio >= WIDE_RATIO &&
@@ -11185,7 +11431,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (settleFrame) cancelAnimationFrame(settleFrame);
         settleFrame = requestAnimationFrame(function () {
           settleFrame = 0;
-          if (!eligible() || !lastWidth) return;
+          if (descended() || !eligible() || !lastWidth) return;
           var overflow = Math.max(
             document.documentElement.scrollHeight,
             document.body.scrollHeight
@@ -11202,6 +11448,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       }
       function measure() {
         frame = 0;
+        if (descended()) {
+          return lastWidth ? { ratio: ratio, width: lastWidth } : null;
+        }
         if (!eligible()) {
           clear();
           return null;
@@ -11225,7 +11474,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         };
       }
       function schedule() {
-        if (frame) return;
+        if (descended() || frame) return;
         frame = requestAnimationFrame(measure);
       }
       function stableSnapshot() {
@@ -11303,6 +11552,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       var lastReceipt = null;
       var SAFE_GAP = 10;
 
+      function descended() {
+        return Boolean(html.getAttribute('data-drilldown-level'));
+      }
       function visible(element) {
         if (!element || element.hidden) return false;
         var style = window.getComputedStyle(element);
@@ -11423,6 +11675,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       }
       function measure() {
         frame = 0;
+        if (descended()) return lastReceipt;
         if (probingBaseline) return null;
         if (!eligible()) return clear({ preserveBaseline: !cameraAtBaseline() });
 
@@ -11528,7 +11781,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         return probePromise;
       }
       function schedule() {
-        if (frame) return;
+        if (descended() || frame) return;
         frame = requestAnimationFrame(measure);
       }
       function stableSnapshot() {
@@ -11607,6 +11860,15 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       var clipFrame = 0;
       var resizeFrame = 0;
       var autoScrollUntil = 0;
+      var changeListeners = [];
+      var eventListeners = { minZoomOut: [], gesture: [] };
+      var touchPoints = {};
+      var pinch = null;
+      var wheelGestureId = 0;
+      var wheelGestureTimer = null;
+      var pinchGestureId = 0;
+      var transitionSettleHandler = null;
+      var transitionSettleTimer = null;
 
       var viewBox = svg.viewBox && svg.viewBox.baseVal;
 
@@ -11723,6 +11985,63 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         }
         sample();
       }
+      function emitChangeSnapshot(transitioning) {
+        var snapshot = {
+          scale: state.scale, x: state.x, y: state.y, mode: state.mode,
+          detail: detailLevel(), transitioning: transitioning
+        };
+        changeListeners.slice().forEach(function (cb) {
+          try { cb(snapshot); } catch (_) {}
+        });
+      }
+      function clearTransitionSettle() {
+        if (transitionSettleHandler) {
+          svg.removeEventListener('transitionend', transitionSettleHandler);
+          transitionSettleHandler = null;
+        }
+        if (transitionSettleTimer) {
+          clearTimeout(transitionSettleTimer);
+          transitionSettleTimer = null;
+        }
+      }
+      function notifyChange() {
+        if (!changeListeners.length) { clearTransitionSettle(); return; }
+        emitChangeSnapshot(true);
+        clearTransitionSettle();
+        var settle = function () {
+          clearTransitionSettle();
+          emitChangeSnapshot(false);
+        };
+        transitionSettleHandler = function (event) {
+          if (event.target === svg && event.propertyName === 'transform') settle();
+        };
+        svg.addEventListener('transitionend', transitionSettleHandler);
+        transitionSettleTimer = setTimeout(settle, 200);
+      }
+      function emit(event, payload) {
+        var list = eventListeners[event];
+        if (!list || !list.length) return;
+        list.slice().forEach(function (cb) {
+          try { cb(payload); } catch (_) {}
+        });
+      }
+      function onChange(cb) {
+        if (typeof cb === 'function' && changeListeners.indexOf(cb) < 0) changeListeners.push(cb);
+      }
+      function offChange(cb) {
+        var index = changeListeners.indexOf(cb);
+        if (index >= 0) changeListeners.splice(index, 1);
+      }
+      function on(event, cb) {
+        if (!eventListeners[event] || typeof cb !== 'function') return;
+        if (eventListeners[event].indexOf(cb) < 0) eventListeners[event].push(cb);
+      }
+      function off(event, cb) {
+        var list = eventListeners[event];
+        if (!list) return;
+        var index = list.indexOf(cb);
+        if (index >= 0) list.splice(index, 1);
+      }
       function apply() {
         clamp();
         svg.style.transform = 'translate(' + state.x + 'px,' + state.y + 'px) scale(' + state.scale + ')';
@@ -11736,6 +12055,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (Archify.viewerChromeLayout && typeof Archify.viewerChromeLayout.schedule === 'function') {
           Archify.viewerChromeLayout.schedule();
         }
+        notifyChange();
       }
       function sampleRenderedState() {
         var transform = '';
@@ -11827,20 +12147,40 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           Archify.routeProbe.pauseJourney({ preserveElapsed: true, reason: reason || 'manual' });
         }
       }
+      function svgOrigin() {
+        var containerRect = container.getBoundingClientRect();
+        var style = getComputedStyle(container);
+        return {
+          left: containerRect.left + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0) - container.scrollLeft,
+          top: containerRect.top + (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.paddingTop) || 0) - container.scrollTop
+        };
+      }
+      function zoomAt(nextScale, clientX, clientY, options) {
+        options = options || {};
+        var previous = state.scale;
+        var next = options.snap
+          ? Math.max(1, Math.min(3, Math.round(nextScale * 4) / 4))
+          : Math.max(1, Math.min(3, nextScale));
+        if (next === previous) return next;
+        var origin = svgOrigin();
+        var hasPoint = typeof clientX === 'number' && typeof clientY === 'number';
+        var targetX = hasPoint ? (clientX - origin.left) : (svg.clientWidth || 1) / 2;
+        var targetY = hasPoint ? (clientY - origin.top) : (svg.clientHeight || 1) / 2;
+        var contentX = (targetX - state.x) / previous;
+        var contentY = (targetY - state.y) / previous;
+        state.scale = next;
+        state.x = targetX - contentX * next;
+        state.y = targetY - contentY * next;
+        apply();
+        return next;
+      }
       function zoom(next, options) {
         options = options || {};
         if (options.manual !== false) interruptCamera();
-        var previous = state.scale;
-        next = Math.max(1, Math.min(3, Math.round(next * 4) / 4));
-        if (next === previous) return;
-        var centerX = (svg.clientWidth || 1) / 2;
-        var centerY = (svg.clientHeight || 1) / 2;
-        var contentX = (centerX - state.x) / previous;
-        var contentY = (centerY - state.y) / previous;
-        state.scale = next;
-        state.x = centerX - contentX * next;
-        state.y = centerY - contentY * next;
-        apply();
+        var origin = svgOrigin();
+        var centerX = origin.left + (svg.clientWidth || 1) / 2;
+        var centerY = origin.top + (svg.clientHeight || 1) / 2;
+        zoomAt(next, centerX, centerY, { snap: true });
       }
       function reset(options) {
         options = options || {};
@@ -12059,7 +12399,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         }
       }
       function onPointerEnd(event) {
-        if (!drag) return;
+        if (!drag || event.pointerId !== drag.pointerId) return;
         var moved = drag.moved;
         drag = null;
         container.classList.remove('is-panning');
@@ -12069,19 +12409,110 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           setTimeout(function () { container.removeAttribute('data-just-panned'); }, 80);
         }
       }
+      function touchIds() { return Object.keys(touchPoints); }
+      function touchDistance(a, b) {
+        var dx = a.x - b.x;
+        var dy = a.y - b.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+      function beginPinch() {
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var ids = touchIds();
+        if (ids.length !== 2) return;
+        var a = touchPoints[ids[0]];
+        var b = touchPoints[ids[1]];
+        var dist = touchDistance(a, b);
+        if (!(dist > 0)) return;
+        if (drag) {
+          drag = null;
+          container.classList.remove('is-panning');
+        }
+        ids.forEach(function (id) { try { container.setPointerCapture(Number(id)); } catch (_) {} });
+        interruptCamera();
+        pinchGestureId += 1;
+        pinch = {
+          ids: ids,
+          startDist: dist,
+          startScale: state.scale,
+          lastDist: dist,
+          midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+          gestureId: pinchGestureId
+        };
+        emit('gesture', { phase: 'start', source: 'pinch', id: pinch.gestureId });
+      }
+      function updatePinch() {
+        if (!pinch) return;
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var a = touchPoints[pinch.ids[0]];
+        var b = touchPoints[pinch.ids[1]];
+        if (!a || !b) return;
+        var dist = touchDistance(a, b);
+        if (!(dist > 0)) return;
+        var closing = dist < pinch.lastDist - 0.5;
+        pinch.lastDist = dist;
+        var ratio = dist / pinch.startDist;
+        var desired = pinch.startScale * ratio;
+        var previous = state.scale;
+        var next = zoomAt(desired, pinch.midpoint.x, pinch.midpoint.y);
+        if (closing && next === previous && previous <= 1) {
+          emit('minZoomOut', { source: 'pinch', gestureId: pinch.gestureId });
+        }
+        emit('gesture', { phase: 'move', source: 'pinch', id: pinch.gestureId });
+      }
+      function endTouchPointer(event, reason) {
+        if (event.pointerType !== 'touch') return;
+        delete touchPoints[event.pointerId];
+        try { container.releasePointerCapture(event.pointerId); } catch (_) {}
+        if (pinch && (!touchPoints[pinch.ids[0]] || !touchPoints[pinch.ids[1]])) {
+          var endedGesture = pinch.gestureId;
+          pinch = null;
+          emit('gesture', { phase: reason === 'cancel' ? 'cancel' : 'end', source: 'pinch', id: endedGesture });
+        }
+      }
+      function tickWheelGesture() {
+        if (wheelGestureTimer) {
+          clearTimeout(wheelGestureTimer);
+          emit('gesture', { phase: 'move', source: 'wheel', id: wheelGestureId });
+        } else {
+          wheelGestureId += 1;
+          emit('gesture', { phase: 'start', source: 'wheel', id: wheelGestureId });
+        }
+        wheelGestureTimer = setTimeout(function () {
+          wheelGestureTimer = null;
+          emit('gesture', { phase: 'end', source: 'wheel', id: wheelGestureId });
+        }, 150);
+        return wheelGestureId;
+      }
+      function onWheel(event) {
+        if (window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')) return;
+        var gestureId = tickWheelGesture();
+        var deltaY = event.deltaY;
+        if (event.deltaMode === 1) deltaY *= 16;
+        else if (event.deltaMode === 2) deltaY *= 100;
+        var factor = Math.exp(-deltaY * (event.ctrlKey ? 0.01 : 0.0015));
+        var previous = state.scale;
+        var next = Math.max(1, Math.min(3, previous * factor));
+        if (next === previous) {
+          if (deltaY > 0 && previous <= 1) emit('minZoomOut', { source: 'wheel', gestureId: gestureId });
+          return;
+        }
+        event.preventDefault();
+        interruptCamera();
+        zoomAt(next, event.clientX, event.clientY);
+      }
 
       inBtn.addEventListener('click', function () { zoom(state.scale + 0.25); });
       outBtn.addEventListener('click', function () { zoom(state.scale - 0.25); });
       resetBtn.addEventListener('click', reset);
       container.addEventListener('pointerdown', function (event) {
-        if (state.scale <= 1 || event.button !== 0 || event.target.closest('.diagram-nav, .focus-chip, .node-finder, .diagram-guide, .overview-map, .route-probe, .semantic-lens') || event.target.closest('[data-node-id]') || event.target.closest('[data-relationship-hit-key]')) return;
+        if (state.scale <= 1 || event.button !== 0 || (event.pointerType === 'touch' && touchIds().length >= 1) || event.target.closest('.diagram-nav, .focus-chip, .node-finder, .diagram-guide, .overview-map, .route-probe, .semantic-lens') || event.target.closest('[data-node-id]') || event.target.closest('[data-relationship-hit-key]')) return;
         interruptCamera();
-        drag = { startX: event.clientX, startY: event.clientY, x: state.x, y: state.y, moved: false };
+        drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: state.x, y: state.y, moved: false };
         container.classList.add('is-panning');
         try { container.setPointerCapture(event.pointerId); } catch (_) {}
       });
       container.addEventListener('pointermove', function (event) {
-        if (!drag) return;
+        if (!drag || event.pointerId !== drag.pointerId) return;
         var dx = event.clientX - drag.startX;
         var dy = event.clientY - drag.startY;
         if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -12091,6 +12522,21 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       });
       container.addEventListener('pointerup', onPointerEnd);
       container.addEventListener('pointercancel', onPointerEnd);
+      container.addEventListener('lostpointercapture', onPointerEnd);
+      container.addEventListener('pointerdown', function (event) {
+        if (event.pointerType !== 'touch') return;
+        touchPoints[event.pointerId] = { x: event.clientX, y: event.clientY };
+        if (touchIds().length === 2) beginPinch();
+      });
+      container.addEventListener('pointermove', function (event) {
+        if (event.pointerType !== 'touch' || !(event.pointerId in touchPoints)) return;
+        touchPoints[event.pointerId] = { x: event.clientX, y: event.clientY };
+        if (pinch) updatePinch();
+      });
+      container.addEventListener('pointerup', function (event) { endTouchPointer(event, 'end'); });
+      container.addEventListener('pointercancel', function (event) { endTouchPointer(event, 'cancel'); });
+      container.addEventListener('lostpointercapture', function (event) { endTouchPointer(event, 'cancel'); });
+      container.addEventListener('wheel', onWheel, { passive: false });
       container.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', function () {
         if (resizeFrame) cancelAnimationFrame(resizeFrame);
@@ -12108,12 +12554,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       return {
         zoomIn: function () { zoom(state.scale + 0.25); },
         zoomOut: function () { zoom(state.scale - 0.25); },
+        zoomAt: zoomAt,
         reset: reset,
         reveal: reveal,
         centerAt: centerAt,
         logicalViewport: logicalViewport,
         sync: syncSemantic,
-        state: function () { return { scale: state.scale, x: state.x, y: state.y, mode: state.mode }; }
+        state: function () { return { scale: state.scale, x: state.x, y: state.y, mode: state.mode }; },
+        onChange: onChange,
+        offChange: offChange,
+        on: on,
+        off: off
       };
     })();
 
@@ -12783,6 +13234,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           return next;
         }
         if (next) {
+          if (html.getAttribute('data-bundle-nested') === 'true' || html.getAttribute('data-drilldown-level') === '1') return active();
           if (Archify.semanticLens && typeof Archify.semanticLens.clearPreview === 'function') Archify.semanticLens.clearPreview();
           previousScrollY = window.scrollY || 0;
           html.setAttribute('data-present', 'true');
@@ -14984,6 +15436,1243 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     })();
 
     /* ============================================================
+       Identity drilldown — descend in place. Parent SVG stays in the
+       DOM, hidden and untransformed. Child loads via same-directory iframe.
+       ============================================================ */
+    Archify.drilldown = (function () {
+      var CHILD_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.html$/;
+      var DIAGRAM_ID = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+      var SHA256 = /^[a-f0-9]{64}$/;
+      var LOCATE_STATES = { touched: true, untouched: true, stale: true };
+      // Per-level ascend-settle fallback step. A level waits
+      // ASCEND_SETTLE_STEP_MS * max(1, maxDepth - myDepth) for its own
+      // direct child's ascend-done before giving up and closing it on a
+      // timeout alone — sized from the manifest's own max_depth and this
+      // level's absolute depth, never from chainBelow (which may still be
+      // empty while a deeper handshake is in flight and has not yet
+      // reported anything up). Scaling by remaining depth (rather than one
+      // flat timeout everywhere, or one derived from what has been reported
+      // so far) guarantees the innermost level's own fallback always
+      // expires first even if every ascend-done message in the chain is
+      // lost and even before any crumb has propagated: each level out is at
+      // least one full step longer than the level directly below it, by
+      // construction of maxDepth - myDepth alone.
+      var ASCEND_SETTLE_STEP_MS = 250;
+
+      function isSafeChildFile(name) {
+        return typeof name === 'string' && CHILD_FILE.test(name);
+      }
+      function resolveChildFile(manifest, childId) {
+        if (!manifest || !Array.isArray(manifest.diagrams) || typeof childId !== 'string') return null;
+        for (var i = 0; i < manifest.diagrams.length; i += 1) {
+          if (manifest.diagrams[i].id === childId) {
+            var file = manifest.diagrams[i].file;
+            return isSafeChildFile(file) ? file : null;
+          }
+        }
+        return null;
+      }
+      function validateHandshake(msg, expected) {
+        if (!msg || typeof msg !== 'object') return { ok: false, reason: 'shape' };
+        if (typeof msg.type !== 'string') return { ok: false, reason: 'type' };
+        if (typeof msg.id !== 'string' || !DIAGRAM_ID.test(msg.id)) return { ok: false, reason: 'id' };
+        if (typeof msg.specSha256 !== 'string' || !SHA256.test(msg.specSha256)) return { ok: false, reason: 'sha256' };
+        if (!expected || typeof expected.id !== 'string' || typeof expected.specSha256 !== 'string') {
+          return { ok: false, reason: 'expected' };
+        }
+        if (msg.id !== expected.id || msg.specSha256 !== expected.specSha256) {
+          return { ok: false, reason: 'mismatch' };
+        }
+        return { ok: true };
+      }
+      function paintInsideBadge(node, count) {
+        if (!node || typeof node.setAttribute !== 'function') return;
+        if (count > 0) node.setAttribute('data-locate-inside', String(count));
+        else if (typeof node.removeAttribute === 'function') node.removeAttribute('data-locate-inside');
+        if (typeof node.querySelector !== 'function') return;
+        var existing = node.querySelector('[data-locate-inside-count]');
+        if (!(count > 0)) {
+          if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+          return;
+        }
+        var text = existing;
+        if (!text && typeof document !== 'undefined' && document.createElementNS) {
+          var rects = node.querySelectorAll ? node.querySelectorAll('rect') : [];
+          var box = rects.length ? rects[rects.length - 1] : null;
+          text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('data-locate-inside-count', '');
+          text.setAttribute('class', 't-muted');
+          text.setAttribute('font-size', '8');
+          text.setAttribute('font-weight', '600');
+          text.setAttribute('text-anchor', 'end');
+          if (box) {
+            text.setAttribute('x', String(Number(box.getAttribute('x')) + Number(box.getAttribute('width')) - 6));
+            text.setAttribute('y', String(Number(box.getAttribute('y')) + 11));
+          }
+          node.appendChild(text);
+        }
+        if (text) text.textContent = String(count);
+      }
+      function applyProjection(states, nodes, insides) {
+        var applied = [];
+        if (!nodes) return applied;
+        for (var i = 0; i < nodes.length; i += 1) {
+          var node = nodes[i];
+          var id = node && (typeof node.getAttribute === 'function' ? node.getAttribute('data-node-id') : node.id);
+          var state = states && states[id];
+          if (LOCATE_STATES[state]) {
+            if (typeof node.setAttribute === 'function') node.setAttribute('data-locate-state', state);
+            applied.push({ id: id, state: state });
+          } else if (node && typeof node.removeAttribute === 'function') {
+            node.removeAttribute('data-locate-state');
+          }
+          if (insides) paintInsideBadge(node, Number(insides[id] || 0));
+        }
+        return applied;
+      }
+      function text(key, values) {
+        return typeof viewerText === 'function' ? viewerText(key, values) : key;
+      }
+      function locateChipModel(row) {
+        var count = row ? Number(row.files_touched_inside || 0) : 0;
+        if (!Number.isFinite(count) || count <= 0) return { visible: false, count: 0, text: '' };
+        return {
+          visible: true,
+          count: count,
+          text: text('viewer.locate.filesInside', { count: count })
+        };
+      }
+      function buildStaleCardModel(expected, actual, reason) {
+        return {
+          title: text('viewer.drilldown.stale.title'),
+          expectedId: String(expected && expected.id || ''),
+          actualId: String(actual && actual.id || ''),
+          expectedSha: String(expected && expected.spec || '').slice(0, 12),
+          actualSha: String(actual && actual.spec || '').slice(0, 12),
+          reason: String(reason || 'mismatch'),
+          repair: text('viewer.drilldown.repair'),
+          expectedIdLabel: text('viewer.drilldown.expectedId'),
+          actualIdLabel: text('viewer.drilldown.actualId'),
+          expectedShaLabel: text('viewer.drilldown.expectedSha'),
+          actualShaLabel: text('viewer.drilldown.actualSha'),
+          reasonLabel: text('viewer.drilldown.reason')
+        };
+      }
+      function fillStaleCard(el, model, doc) {
+        if (!el || !doc) return model;
+        el.textContent = '';
+        var strong = doc.createElement('strong');
+        strong.textContent = model.title;
+        el.appendChild(strong);
+        var idLine = doc.createElement('p');
+        idLine.appendChild(doc.createTextNode(model.expectedIdLabel + ' '));
+        var expectedId = doc.createElement('code');
+        expectedId.textContent = model.expectedId;
+        idLine.appendChild(expectedId);
+        idLine.appendChild(doc.createTextNode(' · ' + model.actualIdLabel + ' '));
+        var actualId = doc.createElement('code');
+        actualId.textContent = model.actualId;
+        idLine.appendChild(actualId);
+        el.appendChild(idLine);
+        var shaLine = doc.createElement('p');
+        shaLine.appendChild(doc.createTextNode(model.expectedShaLabel + ' '));
+        var expectedSha = doc.createElement('code');
+        expectedSha.textContent = model.expectedSha;
+        shaLine.appendChild(expectedSha);
+        shaLine.appendChild(doc.createTextNode(' · ' + model.actualShaLabel + ' '));
+        var actualSha = doc.createElement('code');
+        actualSha.textContent = model.actualSha;
+        shaLine.appendChild(actualSha);
+        el.appendChild(shaLine);
+        if (model.reason && model.reason !== 'mismatch') {
+          var reasonLine = doc.createElement('p');
+          reasonLine.appendChild(doc.createTextNode(model.reasonLabel + ' '));
+          var reasonCode = doc.createElement('code');
+          reasonCode.textContent = model.reason;
+          reasonLine.appendChild(reasonCode);
+          el.appendChild(reasonLine);
+        }
+        var repairLine = doc.createElement('p');
+        var repair = doc.createElement('code');
+        repair.textContent = model.repair;
+        repairLine.appendChild(repair);
+        el.appendChild(repairLine);
+        return model;
+      }
+
+      var api = {
+        validateHandshake: validateHandshake,
+        resolveChildFile: resolveChildFile,
+        applyProjection: applyProjection,
+        buildStaleCardModel: buildStaleCardModel,
+        fillStaleCard: fillStaleCard,
+        isSafeChildFile: isSafeChildFile,
+        locateChipModel: locateChipModel,
+        crumbCurrentText: crumbCurrentText,
+        paintInsideBadge: paintInsideBadge
+      };
+      if (typeof document === 'undefined' || !document.querySelector) return api;
+
+      var html = document.documentElement;
+      var svg = document.querySelector('.diagram-container svg');
+      var host = document.getElementById('archify-drilldown-host');
+      var crumb = document.getElementById('archify-drilldown-crumb');
+      var silhouette = document.getElementById('archify-drilldown-silhouette');
+      var frame = document.getElementById('archify-drilldown-frame');
+      var stale = document.getElementById('archify-drilldown-stale');
+      var descendBtn = document.getElementById('btn-drilldown-descend');
+      var locateChip = document.getElementById('archify-locate-chip');
+      var reduced = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      var manifest = null;
+      var subtreeManifest = null;
+      var myDepth = 0;
+      var helloSession = null;
+      var locate = null;
+      var level = 0;
+      var current = null;
+      var handshakeTimer = 0;
+      var savedScroll = null;
+      var sessionCounter = 0;
+      var chainBelow = [];
+      var pendingAscendSettle = null;
+      var pendingAscendRequestId = null;
+      var pendingAscendTimer = 0;
+      var ascendRequestCounter = 0;
+
+      function parseScript(id) {
+        var node = document.getElementById(id);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+      }
+      function bundleRole() { return svg ? svg.getAttribute('data-bundle-role') || '' : ''; }
+      function nestedChild() { return window.parent !== window && bundleRole() === 'child'; }
+      function active() { return level > 0; }
+      function readManifest() {
+        if (manifest) return manifest;
+        manifest = parseScript('archify-bundle-manifest');
+        if (manifest) return manifest;
+        return subtreeManifest;
+      }
+      function entryTitleFor() {
+        var m = readManifest();
+        var entryDiagram = m && diagramById(m.entry);
+        return (entryDiagram && entryDiagram.title) || document.title;
+      }
+      function buildSubtree(sourceManifest, childId) {
+        if (!sourceManifest || !Array.isArray(sourceManifest.diagrams)) return null;
+        var byId = {};
+        sourceManifest.diagrams.forEach(function (d) { byId[d.id] = d; });
+        var rowsByParent = {};
+        (sourceManifest.drilldowns || []).forEach(function (row) {
+          if (!rowsByParent[row.parent]) rowsByParent[row.parent] = [];
+          rowsByParent[row.parent].push(row);
+        });
+        var seen = {};
+        var queue = [childId];
+        var diagrams = [];
+        var drilldowns = [];
+        while (queue.length) {
+          var id = queue.shift();
+          if (seen[id]) continue;
+          seen[id] = true;
+          if (byId[id]) diagrams.push(byId[id]);
+          var rows = rowsByParent[id] || [];
+          for (var i = 0; i < rows.length; i += 1) {
+            drilldowns.push(rows[i]);
+            queue.push(rows[i].child);
+          }
+        }
+        var rootDiagram = byId[childId];
+        return {
+          entry: childId,
+          depth: rootDiagram ? rootDiagram.level : null,
+          max_depth: sourceManifest.max_depth,
+          diagrams: diagrams,
+          drilldowns: drilldowns
+        };
+      }
+      function validateSubtreeShape(subtree) {
+        if (!subtree || typeof subtree !== 'object' || Array.isArray(subtree)) return false;
+        if (typeof subtree.entry !== 'string' || !DIAGRAM_ID.test(subtree.entry)) return false;
+        if (typeof subtree.max_depth !== 'number' || !isFinite(subtree.max_depth) || subtree.max_depth < 0) return false;
+        if (typeof subtree.depth !== 'number' || !isFinite(subtree.depth) || subtree.depth < 0) return false;
+        if (subtree.depth >= subtree.max_depth) return false;
+        if (!Array.isArray(subtree.diagrams) || !Array.isArray(subtree.drilldowns)) return false;
+        for (var i = 0; i < subtree.diagrams.length; i += 1) {
+          var d = subtree.diagrams[i];
+          if (!d || typeof d !== 'object') return false;
+          if (typeof d.id !== 'string' || !DIAGRAM_ID.test(d.id)) return false;
+          if (typeof d.file !== 'string' || !isSafeChildFile(d.file)) return false;
+          if (typeof d.spec_sha256 !== 'string' || !SHA256.test(d.spec_sha256)) return false;
+        }
+        for (var j = 0; j < subtree.drilldowns.length; j += 1) {
+          var row = subtree.drilldowns[j];
+          if (!row || typeof row !== 'object') return false;
+          if (typeof row.parent !== 'string' || !DIAGRAM_ID.test(row.parent)) return false;
+          if (typeof row.component !== 'string' || !row.component) return false;
+          if (typeof row.child !== 'string' || !DIAGRAM_ID.test(row.child)) return false;
+        }
+        return true;
+      }
+      function sanitizeChain(chain) {
+        var out = [];
+        for (var i = 0; i < chain.length; i += 1) {
+          var row = chain[i];
+          if (!row || typeof row !== 'object') continue;
+          out.push({
+            id: typeof row.id === 'string' ? row.id : '',
+            title: typeof row.title === 'string' ? row.title : '',
+            componentLabel: typeof row.componentLabel === 'string' ? row.componentLabel : ''
+          });
+        }
+        return out;
+      }
+      function readLocate() {
+        if (locate !== null) return locate;
+        locate = parseScript('archify-locate-projection');
+        return locate;
+      }
+      function diagramById(id) {
+        var diagrams = (readManifest() && readManifest().diagrams) || [];
+        for (var i = 0; i < diagrams.length; i += 1) if (diagrams[i].id === id) return diagrams[i];
+        return null;
+      }
+      function myOwnDiagramId() {
+        var m = readManifest();
+        return m ? m.entry : null;
+      }
+      function drillFor(componentId, childId) {
+        var rows = (readManifest() && readManifest().drilldowns) || [];
+        var ownId = myOwnDiagramId();
+        for (var i = 0; i < rows.length; i += 1) {
+          // A row only applies to this document's own descend if it names
+          // this document as the parent (not merely the component id — a
+          // reused component id in a different diagram must not match) AND
+          // targets the exact child the node's own baked annotation names;
+          // a manifest row pointing at a different diagram than the node's
+          // own data-drilldown-child is not a match either.
+          if (rows[i].component === componentId && rows[i].parent === ownId && rows[i].child === childId) return rows[i];
+        }
+        return null;
+      }
+      function childIdFor(node) {
+        return node ? node.getAttribute('data-drilldown-child') || '' : '';
+      }
+      function canvasNode() {
+        return document.querySelector('.diagram-container');
+      }
+      function captureScroll() {
+        var canvas = canvasNode();
+        return {
+          windowX: window.scrollX || 0,
+          windowY: window.scrollY || 0,
+          canvasX: canvas ? canvas.scrollLeft : 0,
+          canvasY: canvas ? canvas.scrollTop : 0
+        };
+      }
+      function restoreScroll(saved) {
+        if (!saved) return;
+        if (typeof window.scrollTo === 'function') window.scrollTo(saved.windowX, saved.windowY);
+        var canvas = canvasNode();
+        if (canvas) {
+          canvas.scrollLeft = saved.canvasX;
+          canvas.scrollTop = saved.canvasY;
+        }
+      }
+      function clearTransient() {
+        if (Archify.focus && Archify.focus.active && Archify.focus.active()) Archify.focus.clear({ restoreFocus: false });
+        if (Archify.semanticLens && Archify.semanticLens.active && Archify.semanticLens.active()) Archify.semanticLens.clear({ preserveView: true });
+        if (Archify.routeProbe && Archify.routeProbe.active && Archify.routeProbe.active()) Archify.routeProbe.escape({ restoreFocus: false });
+        if (Archify.intentTrace && Archify.intentTrace.active && Archify.intentTrace.active()) Archify.intentTrace.clear();
+        if (Archify.presentation && Archify.presentation.active && Archify.presentation.active()) Archify.presentation.exit();
+        if (Archify.guidedViews && typeof Archify.guidedViews.showAll === 'function') Archify.guidedViews.showAll();
+      }
+      function setState(nextLevel, phase) {
+        level = nextLevel;
+        if (nextLevel) {
+          html.setAttribute('data-drilldown-level', String(nextLevel));
+          html.setAttribute('data-drilldown-open', 'true');
+        } else {
+          html.removeAttribute('data-drilldown-level');
+          html.removeAttribute('data-drilldown-open');
+        }
+        if (phase) html.setAttribute('data-drilldown-state', phase);
+        else html.removeAttribute('data-drilldown-state');
+      }
+      // The animation attribute is purely cosmetic (ends the CSS transition
+      // window) and never gates readiness; data-drilldown-state alone tracks
+      // descending -> (ack) open -> ascending -> (removed).
+      function setAnim(phase) {
+        if (phase) html.setAttribute('data-drilldown-anim', phase);
+        else html.removeAttribute('data-drilldown-anim');
+      }
+      function cancelPendingAscend() {
+        window.clearTimeout(pendingAscendTimer);
+        pendingAscendTimer = 0;
+        pendingAscendSettle = null;
+        pendingAscendRequestId = null;
+      }
+      function applyLocate(root, states) {
+        if (!root || !states) return;
+        root.setAttribute('data-locate-active', 'true');
+        var insides = {};
+        var projection = readLocate();
+        if (projection && projection.components) {
+          Object.keys(projection.components).forEach(function (id) {
+            insides[id] = Number(projection.components[id].files_touched_inside || 0);
+          });
+        }
+        applyProjection(states, root.querySelectorAll('[data-node-id]'), insides);
+      }
+      function locateCount(componentId) {
+        var projection = readLocate();
+        var row = projection && projection.components && projection.components[componentId];
+        return locateChipModel(row).count;
+      }
+      function belowMaxDepth() {
+        var m = readManifest();
+        if (!m || typeof m.max_depth !== 'number' || !isFinite(m.max_depth)) return true;
+        return myDepth + 1 < m.max_depth;
+      }
+      function syncPassport(id, node) {
+        var child = childIdFor(node);
+        var allow = !!child && level === 0 && belowMaxDepth();
+        if (descendBtn) {
+          descendBtn.hidden = !allow;
+          descendBtn.onclick = allow ? function () { descend(id); } : null;
+        }
+        if (locateChip) {
+          var projection = readLocate();
+          var chip = locateChipModel(projection && projection.components && projection.components[id]);
+          locateChip.hidden = !chip.visible;
+          locateChip.textContent = chip.text;
+        }
+      }
+      function buildSilhouette(componentId) {
+        // Only the root ever paints a silhouette; an intermediate viewer has
+        // its own copy hidden by CSS (data-bundle-nested), so skip the clone.
+        if (nestedChild() || !svg || !silhouette) return;
+        silhouette.innerHTML = '';
+        var clone = svg.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.setAttribute('aria-hidden', 'true');
+        clone.removeAttribute('tabindex');
+        Array.prototype.forEach.call(clone.querySelectorAll('text, title, desc, .archify-drilldown-mark, [data-semantic-sigil], [data-brand-mark], [data-source-evidence-beacon], image'), function (el) {
+          el.remove();
+        });
+        var target = clone.querySelector('[data-node-id="' + componentId + '"]');
+        if (target) {
+          var rects = target.querySelectorAll('rect');
+          if (rects.length) {
+            var box = rects[rects.length - 1];
+            box.setAttribute('stroke', '#22D3EE');
+            box.setAttribute('stroke-width', '2.5');
+          }
+        }
+        var parts = String(clone.getAttribute('viewBox') || '0 0 100 100').split(/[\s,]+/);
+        var width = Number(parts[2]) || 100;
+        var height = Number(parts[3]) || 100;
+        clone.style.height = '96px';
+        clone.style.width = String(Math.round(96 * width / height)) + 'px';
+        silhouette.appendChild(clone);
+      }
+      function crumbCurrentText(componentLabel, childTitle) {
+        var label = componentLabel || '';
+        var title = childTitle || 'child';
+        if (label && title && label === title) return title;
+        return label ? label + ' · ' + title : title;
+      }
+      // Breadcrumb is drawn once, only at the root. Every viewer reports its own
+      // one-hop contribution up through direct parent/child postMessage links;
+      // a root never speaks to anything but its own direct child.
+      function renderChain(rootTitle, chain) {
+        if (!crumb) return;
+        crumb.textContent = '';
+        if (!chain || !chain.length) return;
+        var rootBtn = document.createElement('button');
+        rootBtn.type = 'button';
+        rootBtn.textContent = rootTitle || 'parent';
+        rootBtn.addEventListener('click', function () { ascendTo(0); });
+        crumb.appendChild(rootBtn);
+        for (var i = 0; i < chain.length; i += 1) {
+          var sep = document.createElement('span');
+          sep.setAttribute('aria-hidden', 'true');
+          sep.textContent = ' › ';
+          crumb.appendChild(sep);
+          var rungText = crumbCurrentText(chain[i].componentLabel, chain[i].title);
+          if (i === chain.length - 1) {
+            var currentRung = document.createElement('span');
+            currentRung.textContent = rungText;
+            currentRung.setAttribute('aria-current', 'page');
+            crumb.appendChild(currentRung);
+          } else {
+            var rungBtn = document.createElement('button');
+            rungBtn.type = 'button';
+            rungBtn.textContent = rungText;
+            rungBtn.addEventListener('click', (function (toDepth) {
+              return function () { ascendTo(toDepth); };
+            })(i + 1));
+            crumb.appendChild(rungBtn);
+          }
+        }
+      }
+      function myOwnRung() {
+        if (!current) return null;
+        return { id: current.childId, title: current.childTitle, componentLabel: current.componentLabel };
+      }
+      function publishChain() {
+        var rung = myOwnRung();
+        var chain = rung ? [rung].concat(chainBelow) : chainBelow.slice();
+        if (nestedChild()) {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'archify:drilldown-crumb', session: helloSession, chain: chain }, '*');
+          }
+        } else {
+          renderChain(entryTitleFor(), chain);
+        }
+      }
+      function showStale(reason, expected, actual) {
+        if (frame) {
+          frame.hidden = true;
+          frame.removeAttribute('src');
+        }
+        setState(1, 'stale');
+        setAnim(null);
+        chainBelow = [];
+        publishChain();
+        if (!stale) return;
+        stale.hidden = false;
+        fillStaleCard(stale, buildStaleCardModel(expected, actual, reason), document);
+      }
+      function postHello() {
+        if (!frame || !frame.contentWindow || !current) return;
+        frame.contentWindow.postMessage({
+          type: 'archify:bundle-hello',
+          expectedId: current.childId,
+          expectedSpecSha256: current.specSha,
+          session: current.session,
+          subtree: buildSubtree(readManifest(), current.childId)
+        }, '*');
+      }
+      function finishHandshake(actual, reason) {
+        if (!current) return;
+        var check = validateHandshake({
+          type: 'archify:bundle-ack',
+          id: actual && actual.id,
+          specSha256: actual && actual.spec
+        }, { id: current.childId, specSha256: current.specSha });
+        if (!check.ok) {
+          showStale(reason || check.reason, { id: current.childId, spec: current.specSha }, actual || {});
+          return;
+        }
+        if (stale) stale.hidden = true;
+        if (frame) frame.hidden = false;
+        var projection = readLocate();
+        var nodes = projection && projection.children && projection.children[current.childId] && projection.children[current.childId].nodes;
+        if (nodes && frame.contentWindow) {
+          frame.contentWindow.postMessage({ type: 'archify:locate-projection', nodes: nodes }, '*');
+        }
+        setState(1, 'open');
+        setAnim(null);
+        chainBelow = [];
+        publishChain();
+      }
+      function descend(componentId) {
+        if (active()) return false;
+        if (!belowMaxDepth()) return false;
+        var node = svg && svg.querySelector('[data-node-id="' + componentId + '"]');
+        var childId = childIdFor(node);
+        if (!childId || !readManifest()) return false;
+        var row = drillFor(componentId, childId);
+        var child = diagramById(childId);
+        cancelPendingAscend();
+        sessionCounter += 1;
+        var session = sessionCounter;
+        if (!child || !row) {
+          current = {
+            componentId: componentId,
+            componentLabel: node.getAttribute('data-node-label') || componentId,
+            childId: childId,
+            childTitle: (child && child.title) || childId,
+            specSha: (child && child.spec_sha256) || '',
+            file: (child && child.file) || '',
+            session: session
+          };
+          if (host) host.hidden = false;
+          showStale(!child ? 'missing-child' : 'missing-row', {
+            id: current.childId,
+            spec: current.specSha
+          }, {});
+          return true;
+        }
+        clearTransient();
+        savedScroll = captureScroll();
+        current = {
+          componentId: componentId,
+          componentLabel: node.getAttribute('data-node-label') || componentId,
+          childId: childId,
+          childTitle: child.title || childId,
+          specSha: child.spec_sha256,
+          file: child.file,
+          session: session
+        };
+        chainBelow = [];
+        buildSilhouette(componentId);
+        setState(1, 'descending');
+        setAnim('descending');
+        if (host) host.hidden = false;
+        if (stale) { stale.hidden = true; stale.textContent = ''; }
+        var file = resolveChildFile(readManifest(), childId);
+        if (!file) {
+          showStale(isSafeChildFile(child.file) ? 'missing-file' : 'unsafe-file', {
+            id: current.childId,
+            spec: current.specSha
+          }, {});
+          return true;
+        }
+        if (frame) {
+          frame.hidden = true;
+          frame.src = './' + file;
+        }
+        window.clearTimeout(handshakeTimer);
+        handshakeTimer = window.setTimeout(function () {
+          if (!current || current.session !== session) return;
+          finishHandshake(null, 'timeout');
+        }, 1200);
+        // Readiness is ACK-gated only (see finishHandshake). This timer only
+        // ends the CSS transition window (data-drilldown-anim); it never
+        // touches data-drilldown-state, which stays "descending" until a
+        // real ack, so a late ack cannot be mistaken for a fresh one and a
+        // stale/duplicate message has a stable phase to be rejected against.
+        if (!(reduced && reduced.matches)) {
+          window.setTimeout(function () {
+            if (!current || current.session !== session) return;
+            if (html.getAttribute('data-drilldown-anim') === 'descending') setAnim(null);
+          }, 170);
+        }
+        return true;
+      }
+      function back() {
+        if (!active()) return false;
+        // `current` is cleared immediately, not after the ascend animation:
+        // a handshake ack, escape or crumb arriving during the ~170ms window
+        // must see no live descent to attach to (both the message handlers'
+        // own `current` checks and this function's own `reveal()` below rely
+        // on that). `closing` keeps what reveal() itself still needs.
+        var closing = current;
+        current = null;
+        cancelPendingAscend();
+        window.clearTimeout(handshakeTimer);
+        setState(1, 'ascending');
+        setAnim('ascending');
+        if (frame) {
+          frame.hidden = true;
+          frame.removeAttribute('src');
+        }
+        if (stale) { stale.hidden = true; stale.textContent = ''; }
+        if (silhouette) silhouette.innerHTML = '';
+        chainBelow = [];
+        if (nestedChild()) {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'archify:drilldown-crumb', session: helloSession, chain: [] }, '*');
+          }
+        } else if (crumb) {
+          crumb.textContent = '';
+        }
+        function reveal() {
+          // If a new descend() started while ascending, current is no longer
+          // null; that new descent owns the host/frame/focus now, so this
+          // superseded ascend must not touch anything.
+          if (current !== null) return;
+          if (host) host.hidden = true;
+          setState(0, '');
+          setAnim(null);
+          restoreScroll(savedScroll);
+          savedScroll = null;
+          var focusId = closing && closing.componentId;
+          if (focusId && svg) {
+            var focusNode = svg.querySelector('[data-node-id="' + focusId + '"]');
+            if (focusNode && typeof focusNode.focus === 'function') {
+              try { focusNode.focus({ preventScroll: true }); } catch (_) { try { focusNode.focus(); } catch (_) {} }
+            }
+          }
+        }
+        if (reduced && reduced.matches) reveal();
+        else window.setTimeout(reveal, 170);
+        return true;
+      }
+      function handleAscendRequest(toDepth, onSettled) {
+        function done() { if (onSettled) onSettled(); }
+        if (!active() || !current) { done(); return; }
+        var childDepth = myDepth + 1;
+        var mySession = current.session;
+        function finishClose() {
+          // A stale settle (its own timer or a late ascend-done) firing after
+          // back()/a new descend() replaced current must not act on it.
+          if (current && current.session === mySession && childDepth > toDepth) back();
+          done();
+        }
+        if (frame && frame.contentWindow) {
+          cancelPendingAscend();
+          ascendRequestCounter += 1;
+          var requestId = ascendRequestCounter;
+          var settled = false;
+          var settle = function () {
+            if (settled) return;
+            settled = true;
+            if (pendingAscendRequestId === requestId) {
+              pendingAscendSettle = null;
+              pendingAscendRequestId = null;
+              window.clearTimeout(pendingAscendTimer);
+              pendingAscendTimer = 0;
+            }
+            finishClose();
+          };
+          pendingAscendSettle = settle;
+          pendingAscendRequestId = requestId;
+          frame.contentWindow.postMessage({ type: 'archify:drilldown-ascend-request', toDepth: toDepth, session: current.session, requestId: requestId }, '*');
+          var timeoutManifest = readManifest();
+          var maxDepthForTimeout = (timeoutManifest && typeof timeoutManifest.max_depth === 'number' && isFinite(timeoutManifest.max_depth))
+            ? timeoutManifest.max_depth
+            : 2;
+          var settleTimeoutMs = ASCEND_SETTLE_STEP_MS * Math.max(1, maxDepthForTimeout - myDepth);
+          pendingAscendTimer = window.setTimeout(settle, settleTimeoutMs);
+        } else {
+          finishClose();
+        }
+      }
+      function ascendTo(toDepth) {
+        if (typeof toDepth !== 'number' || !isFinite(toDepth) || toDepth < 0) return false;
+        handleAscendRequest(toDepth);
+        return true;
+      }
+      function closeInnermost() {
+        if (!active()) return false;
+        return ascendTo(myDepth + chainBelow.length);
+      }
+      function escapeToParent() {
+        if (!nestedChild()) return false;
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'archify:drilldown-escape', session: helloSession }, '*');
+        }
+        return true;
+      }
+      function onParentMessage(data, event) {
+        if (data.type === 'archify:bundle-hello') {
+          if (typeof data.expectedId !== 'string' || !DIAGRAM_ID.test(data.expectedId)) return;
+          if (typeof data.expectedSpecSha256 !== 'string' || !SHA256.test(data.expectedSpecSha256)) return;
+          // An invalid subtree shape leaves manifest/depth unset; the parent's
+          // handshake then times out and shows its own stale card, rather
+          // than this document silently accepting a malformed hand-down.
+          if (data.subtree !== undefined && data.subtree !== null && !validateSubtreeShape(data.subtree)) return;
+          if (data.subtree) {
+            subtreeManifest = {
+              entry: data.subtree.entry,
+              max_depth: data.subtree.max_depth,
+              diagrams: data.subtree.diagrams,
+              drilldowns: data.subtree.drilldowns
+            };
+            myDepth = data.subtree.depth;
+            html.setAttribute('data-drilldown-depth', String(myDepth));
+          }
+          helloSession = typeof data.session === 'number' ? data.session : null;
+          chainBelow = [];
+          event.source.postMessage({
+            type: 'archify:bundle-ack',
+            id: svg ? svg.getAttribute('data-bundle-id') : '',
+            specSha256: svg ? svg.getAttribute('data-bundle-spec-sha256') : '',
+            session: helloSession
+          }, '*');
+          html.setAttribute('data-bundle-nested', 'true');
+          if (Archify.motionGovernor && Archify.motionGovernor.setMode) Archify.motionGovernor.setMode('still');
+          return;
+        }
+        if (data.type === 'archify:locate-projection') {
+          if (!data.nodes || typeof data.nodes !== 'object' || Array.isArray(data.nodes)) return;
+          applyLocate(svg, data.nodes);
+          return;
+        }
+        // Small hook for Faz 3b's zoom-dive: hands the toggle preference
+        // down through this same validated hello/session channel (the
+        // only path a file:// child has, since it cannot share the
+        // parent's localStorage). Session-gated like every other message
+        // here; the actual preference state lives in Archify.dive, not here.
+        if (data.type === 'archify:dive-pref') {
+          if (typeof data.session !== 'number' || data.session !== helloSession) return;
+          if (Archify.dive && typeof Archify.dive.receivePreference === 'function') {
+            Archify.dive.receivePreference(!!data.enabled);
+          }
+          return;
+        }
+        if (data.type === 'archify:drilldown-ascend-request') {
+          if (typeof data.toDepth !== 'number' || !isFinite(data.toDepth) || data.toDepth < 0) return;
+          if (typeof data.session !== 'number' || data.session !== helloSession) return;
+          if (typeof data.requestId !== 'number') return;
+          var requestId = data.requestId;
+          handleAscendRequest(data.toDepth, function () {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'archify:drilldown-ascend-done', session: helloSession, requestId: requestId }, '*');
+            }
+          });
+        }
+      }
+      function onChildMessage(data) {
+        // Every navigation message requires an exact session match; a
+        // missing session, or one from any other descent, is rejected
+        // outright — there is no legacy "session absent, accept anyway" path.
+        if (data.type === 'archify:bundle-ack') {
+          if (!current) return;
+          if (typeof data.id !== 'string' || !DIAGRAM_ID.test(data.id)) return;
+          if (typeof data.specSha256 !== 'string' || !SHA256.test(data.specSha256)) return;
+          if (typeof data.session !== 'number' || data.session !== current.session) return;
+          // Only a document actually mid-handshake can be acked: an ack
+          // during ascending/stale, or a duplicate once already open, is
+          // rejected rather than re-running finishHandshake or clearing
+          // chainBelow.
+          if (html.getAttribute('data-drilldown-state') !== 'descending') return;
+          window.clearTimeout(handshakeTimer);
+          finishHandshake({ id: data.id, spec: data.specSha256 });
+          return;
+        }
+        if (data.type === 'archify:drilldown-escape') {
+          if (!current) return;
+          if (typeof data.session !== 'number' || data.session !== current.session) return;
+          back();
+          return;
+        }
+        if (data.type === 'archify:drilldown-crumb') {
+          if (!current) return;
+          if (typeof data.session !== 'number' || data.session !== current.session) return;
+          if (html.getAttribute('data-drilldown-state') !== 'open') return;
+          chainBelow = Array.isArray(data.chain) ? sanitizeChain(data.chain) : [];
+          publishChain();
+          return;
+        }
+        if (data.type === 'archify:drilldown-ascend-done') {
+          if (!current) return;
+          if (typeof data.session !== 'number' || data.session !== current.session) return;
+          if (typeof data.requestId !== 'number' || data.requestId !== pendingAscendRequestId) return;
+          if (pendingAscendSettle) {
+            var settle = pendingAscendSettle;
+            settle();
+          }
+        }
+      }
+      function onMessage(event) {
+        var data = event.data;
+        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+        if (nestedChild() && event.source === window.parent) {
+          onParentMessage(data, event);
+          return;
+        }
+        if (frame && frame.contentWindow && event.source === frame.contentWindow) {
+          onChildMessage(data);
+        }
+      }
+      function onMarkClick(event) {
+        var mark = event.target.closest ? event.target.closest('.archify-drilldown-mark') : null;
+        if (!mark || level > 0) return;
+        var node = event.target.closest('[data-node-id]');
+        if (!node) return;
+        event.preventDefault();
+        event.stopPropagation();
+        descend(node.getAttribute('data-node-id'));
+      }
+
+      if (nestedChild()) {
+        html.setAttribute('data-bundle-nested', 'true');
+        if (Archify.motionGovernor && Archify.motionGovernor.setMode) Archify.motionGovernor.setMode('still');
+      }
+      var projection = readLocate();
+      if (projection && projection.components && svg) {
+        var states = {};
+        Object.keys(projection.components).forEach(function (id) {
+          states[id] = projection.components[id].state;
+        });
+        applyLocate(svg, states);
+      }
+      function registerBundleListeners() {
+        // A bundle child carries data-bundle-role="child" on its own SVG from
+        // render time, whether or not it is currently sitting inside an
+        // iframe — that static signal (not runtime nesting) is what lets a
+        // child register its own descend/message handling for its own
+        // children, once a subtree manifest arrives from its parent.
+        var isBundlePart = !!readManifest() || bundleRole() === 'child';
+        if (svg && isBundlePart) svg.addEventListener('click', onMarkClick, true);
+        if (isBundlePart) window.addEventListener('message', onMessage);
+        if (frame && isBundlePart) {
+          frame.addEventListener('load', function () {
+            if (!current || !frame.src) return;
+            postHello();
+          });
+        }
+      }
+      // Bundle injection may place the manifest after this runtime script.
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', registerBundleListeners, { once: true });
+      else registerBundleListeners();
+
+      return {
+        validateHandshake: validateHandshake,
+        resolveChildFile: resolveChildFile,
+        applyProjection: applyProjection,
+        buildStaleCardModel: buildStaleCardModel,
+        fillStaleCard: fillStaleCard,
+        isSafeChildFile: isSafeChildFile,
+        locateChipModel: locateChipModel,
+        crumbCurrentText: crumbCurrentText,
+        paintInsideBadge: paintInsideBadge,
+        active: active,
+        descend: descend,
+        back: back,
+        ascendTo: ascendTo,
+        closeInnermost: closeInnermost,
+        escapeToParent: escapeToParent,
+        syncPassport: syncPassport,
+        // Faz 3b hook: the session number of the currently-open direct
+        // child's handshake (or null), so dive.js can address exactly that
+        // frame/session for its own archify:dive-pref message without
+        // reaching into this closure's private `current`.
+        activeChildSession: function () { return current ? current.session : null; }
+      };
+    })();
+
+        /* ============================================================
+       Zoom-dive — opt-in automatic descend triggered by manual zoom.
+       Belirginleştirme (the always-on drilldown-mark/Descend highlight at
+       full detail) is pure CSS keyed off the existing
+       .diagram-container[data-detail-level="full"] attribute the camera
+       already writes; nothing here drives it. Everything below is the
+       opt-in toggle, the dwell-gated auto-descend and the double
+       zoom-out escape, reading Archify.view/Archify.drilldown only
+       through their existing public interface — viewer-camera.js is not
+       touched by this fragment.
+       ============================================================ */
+    Archify.dive = (function () {
+      var STORAGE_KEY = 'archify-dive';
+      var DWELL_MS = 250;
+      var DIVE_SCALE = 2.5;
+      var CAMERA_EPSILON_SCALE = 0.004;
+      var CAMERA_EPSILON_PX = 0.5;
+      var ESCAPE_WINDOW_MS = 600;
+      // A gesture 'start' only lifts the redive lock once at least this
+      // much time has passed since any gesture activity on THIS document
+      // (start/move/end/cancel all count) — a still-continuing physical
+      // gesture keeps re-touching that clock (wheel ticks group within
+      // 150ms in viewer-camera.js, well under this), so only an actual
+      // pause followed by a fresh gesture satisfies it.
+      var GESTURE_SILENCE_MS = 400;
+      var html = document.documentElement;
+      var svg = document.querySelector('.diagram-container svg');
+      var container = document.querySelector('.diagram-container');
+      var btn = document.getElementById('btn-drilldown-dive');
+      var status = document.getElementById('archify-dive-status');
+      var reducedQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      var nestedChild = html.getAttribute('data-bundle-nested') === 'true';
+      var embed = html.getAttribute('data-embed') === 'true';
+      // Two independent capabilities: "capable" is this document's own
+      // dive-in target (toggle button + dwell); "escapeCapable" is being
+      // able to zoom-out-escape to a parent, which a leaf with no further
+      // drilldown of its own still needs — a leaf must not lose the
+      // minZoomOut subscription merely because it has nothing to dive into.
+      var capable = !embed && !!(svg && svg.querySelector('[data-drilldown-child]'));
+      var escapeCapable = !embed && nestedChild;
+
+      function text(key, values) {
+        return typeof viewerText === 'function' ? viewerText(key, values) : key;
+      }
+
+      if (!capable && !escapeCapable) {
+        if (btn) btn.hidden = true;
+        return {
+          capable: false,
+          enabled: function () { return false; },
+          toggle: function () { return false; },
+          receivePreference: function () {}
+        };
+      }
+
+      function readStored() {
+        try { return localStorage.getItem(STORAGE_KEY); } catch (_) { return null; }
+      }
+      function writeStored(next) {
+        try {
+          if (next) localStorage.setItem(STORAGE_KEY, 'on');
+          else localStorage.removeItem(STORAGE_KEY);
+        } catch (_) {}
+      }
+
+      var enabled = readStored() === 'on';
+      var dwell = null;
+      var diveLock = false;
+      var rearmed = true;
+      var lastGestureActivityTime = 0;
+      var minZoomOutLog = [];
+      var wasOpen = html.hasAttribute('data-drilldown-open');
+      var wasStateOpen = html.getAttribute('data-drilldown-state') === 'open';
+
+      function render() {
+        if (btn) {
+          btn.hidden = !capable;
+          btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        }
+        if (enabled) html.setAttribute('data-dive', 'on');
+        else html.removeAttribute('data-dive');
+      }
+      // Same-origin (http) children already see this toggle through shared
+      // localStorage; a file:// child cannot, so the parent also hands it
+      // down through the same validated handshake channel Archify.drilldown
+      // owns (its own hello/ack/session protocol), once ACK-open and again
+      // on every toggle change, so a file:// child stays in sync too.
+      function sendPrefToChild() {
+        var frame = document.getElementById('archify-drilldown-frame');
+        var session = Archify.drilldown && typeof Archify.drilldown.activeChildSession === 'function'
+          ? Archify.drilldown.activeChildSession() : null;
+        if (!frame || !frame.contentWindow || typeof session !== 'number') return;
+        try {
+          frame.contentWindow.postMessage({ type: 'archify:dive-pref', enabled: enabled, session: session }, '*');
+        } catch (_) {}
+      }
+      function setEnabled(next, options) {
+        options = options || {};
+        enabled = !!next;
+        if (options.persist !== false) writeStored(enabled);
+        if (!enabled) { cancelDwell(); minZoomOutLog = []; }
+        render();
+        if (options.announceToChild !== false) sendPrefToChild();
+        return enabled;
+      }
+
+      function mobileContained() {
+        return window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram');
+      }
+      function reducedMotion() {
+        return !!(reducedQuery && reducedQuery.matches);
+      }
+      // Route Probe picking/result, Semantic Lens open and a playing guided
+      // story are deliberate, exclusive exploration modes — genuinely
+      // incompatible with an automatic descend. Presentation itself is not:
+      // it only hides chrome, and a reader zooming by hand on stage is
+      // exactly the audience a dive is for. Intent Trace's own "active" node is
+      // just its ordinary 90ms fine-pointer hover preview, which is true
+      // almost the entire time a real mouse is hovering the very node
+      // being wheel-zoomed (the normal way a reader would trigger a dive):
+      // treating that as blocking would make the feature nearly
+      // unreachable from a real mouse, so it is deliberately excluded here.
+      function blockingActive() {
+        if (Archify.routeProbe && Archify.routeProbe.active && Archify.routeProbe.active()) return true;
+        if (Archify.semanticLens && Archify.semanticLens.active && Archify.semanticLens.active()) return true;
+        if (Archify.guidedViews && Archify.guidedViews.isPlaying && Archify.guidedViews.isPlaying()) return true;
+        return false;
+      }
+      function drilldownOpenOrBusy() {
+        return !!(Archify.drilldown && Archify.drilldown.active && Archify.drilldown.active());
+      }
+      function clearDwellVisual() {
+        if (dwell && dwell.node) dwell.node.removeAttribute('data-dive-preview');
+        if (status) status.textContent = '';
+      }
+      function cancelDwell() {
+        if (!dwell) return;
+        window.clearTimeout(dwell.timer);
+        clearDwellVisual();
+        dwell = null;
+      }
+      // Positions the persistent live region right above the node, in the
+      // container's own coordinate space, instead of a fixed page corner.
+      function positionStatus(node) {
+        if (!status || !node || typeof node.getBoundingClientRect !== 'function') return;
+        var nodeRect = node.getBoundingClientRect();
+        var containerRect = container.getBoundingClientRect();
+        var left = nodeRect.left - containerRect.left + nodeRect.width / 2;
+        var top = nodeRect.top - containerRect.top;
+        status.style.left = Math.max(4, left) + 'px';
+        status.style.top = Math.max(4, top - 22) + 'px';
+      }
+      function showDwell(node) {
+        node.setAttribute('data-dive-preview', 'true');
+        if (status) {
+          positionStatus(node);
+          status.textContent = text('viewer.dive.opening', {
+            label: node.getAttribute('data-node-label') || node.getAttribute('data-node-id') || ''
+          });
+        }
+      }
+      function hitTestNode() {
+        var viewport = Archify.view && typeof Archify.view.logicalViewport === 'function'
+          ? Archify.view.logicalViewport() : null;
+        if (!viewport) return null;
+        var cx = viewport.x + viewport.width / 2;
+        var cy = viewport.y + viewport.height / 2;
+        var nodes = svg.querySelectorAll('[data-drilldown-child]');
+        for (var i = 0; i < nodes.length; i += 1) {
+          var node = nodes[i];
+          var box;
+          try { box = node.getBBox(); } catch (_) { continue; }
+          if (!box || box.width <= 0 || box.height <= 0) continue;
+          if (cx >= box.x && cx <= box.x + box.width && cy >= box.y && cy <= box.y + box.height) return node;
+        }
+        return null;
+      }
+      function eligible(snapshot) {
+        return enabled
+          && snapshot.mode === 'manual'
+          && snapshot.scale >= DIVE_SCALE
+          && !reducedMotion()
+          && !mobileContained()
+          && !blockingActive()
+          && !diveLock
+          && rearmed
+          && !drilldownOpenOrBusy();
+      }
+      function cameraMoved(snapshot) {
+        if (!dwell) return false;
+        return Math.abs(snapshot.scale - dwell.scale) > CAMERA_EPSILON_SCALE
+          || Math.abs(snapshot.x - dwell.x) > CAMERA_EPSILON_PX
+          || Math.abs(snapshot.y - dwell.y) > CAMERA_EPSILON_PX;
+      }
+      function startDwell(node, snapshot) {
+        dwell = { node: node, scale: snapshot.scale, x: snapshot.x, y: snapshot.y, timer: 0 };
+        showDwell(node);
+        dwell.timer = window.setTimeout(function () {
+          var target = dwell && dwell.node;
+          clearDwellVisual();
+          dwell = null;
+          if (!target) return;
+          // Re-verify at fire time, not just at dwell start: eligibility
+          // (mode/scale/reduced-motion/blocking/lock) and the hit target
+          // itself can both have changed without an intervening onChange
+          // (e.g. a blocking mode opened, or reduced-motion flipped via
+          // its own change event) between the last evaluation and now.
+          var freshState = Archify.view && typeof Archify.view.state === 'function' ? Archify.view.state() : null;
+          if (!freshState || !eligible(freshState)) return;
+          if (hitTestNode() !== target) return;
+          if (!Archify.drilldown || typeof Archify.drilldown.descend !== 'function') return;
+          Archify.drilldown.descend(target.getAttribute('data-node-id'));
+        }, DWELL_MS);
+      }
+      // Dwell is only started or re-evaluated as a *candidate change* on a
+      // settled (transitioning:false) snapshot; but a loss of eligibility —
+      // camera moved beyond epsilon, or any other eligible() condition
+      // flipping false — cancels an already-running dwell immediately, on
+      // either notification, rather than waiting for settle.
+      function onCameraChange(snapshot) {
+        if (!rearmed && snapshot.scale < DIVE_SCALE) rearmed = true;
+        if (dwell && (cameraMoved(snapshot) || !eligible(snapshot))) cancelDwell();
+        if (snapshot.transitioning) return;
+        if (!eligible(snapshot)) { cancelDwell(); return; }
+        var target = hitTestNode();
+        if (!target) { cancelDwell(); return; }
+        if (dwell && dwell.node === target) return;
+        cancelDwell();
+        startDwell(target, snapshot);
+      }
+      // A blocking mode opening or reduced-motion flipping on doesn't
+      // necessarily fire a camera onChange; re-check independently.
+      function cancelDwellIfIneligible() {
+        if (!dwell) return;
+        var state = Archify.view && typeof Archify.view.state === 'function' ? Archify.view.state() : null;
+        if (!state || !eligible(state)) cancelDwell();
+      }
+      // Two minZoomOut events count only when they carry two different
+      // (source, gestureId) pairs within the window — a continuing
+      // physical gesture (same pair repeated) is one attempt, not two.
+      function onMinZoomOut(payload) {
+        if (!escapeCapable || !enabled) return;
+        if (!Archify.drilldown || typeof Archify.drilldown.escapeToParent !== 'function') return;
+        var key = payload.source + ':' + payload.gestureId;
+        var now = Date.now();
+        minZoomOutLog = minZoomOutLog.filter(function (entry) { return now - entry.time <= ESCAPE_WINDOW_MS; });
+        var last = minZoomOutLog.length ? minZoomOutLog[minZoomOutLog.length - 1] : null;
+        if (!last || last.key !== key) minZoomOutLog.push({ key: key, time: now });
+        if (minZoomOutLog.length >= 2) {
+          minZoomOutLog = [];
+          Archify.drilldown.escapeToParent();
+        }
+      }
+      // The redive lock lifts only on (i) a fresh pointerdown/keydown, or
+      // (ii) a gesture 'start' preceded by >= GESTURE_SILENCE_MS of no
+      // gesture activity at all on this document — deliberately time-based
+      // and document-local rather than comparing gesture ids, since the
+      // escaping gesture physically happened in a different document (the
+      // child) with its own independent id space; comparing ids across
+      // that boundary cannot tell a continuing wheel flow from a fresh one,
+      // but silence can. watchOwnAscend() seeds the clock to "now" the
+      // instant the lock is set, so a wheel tick landing on the
+      // newly-revealed parent a few milliseconds later (the same physical
+      // gesture) still fails the silence check.
+      function onGesture(payload) {
+        if (payload.phase === 'start') {
+          // No prior activity this document has ever seen (lastGestureActivityTime
+          // still 0) always counts as past the threshold — GESTURE_SILENCE_MS + 1
+          // is a small finite stand-in for that, deliberately not an
+          // unbounded numeric literal: this source ships verbatim inside
+          // every generated viewer artifact (every delivered diagram HTML),
+          // and archify's own artifact validators reject any such literal
+          // appearing in delivered output as a likely non-finite computed
+          // value, whether or not it is actually one.
+          var silence = lastGestureActivityTime ? (Date.now() - lastGestureActivityTime) : (GESTURE_SILENCE_MS + 1);
+          if (diveLock && silence >= GESTURE_SILENCE_MS) diveLock = false;
+        }
+        lastGestureActivityTime = Date.now();
+      }
+      function clearLockOnInput() { diveLock = false; }
+      function watchOwnAscend() {
+        if (typeof MutationObserver === 'undefined') return;
+        var observer = new MutationObserver(function () {
+          var isOpen = html.hasAttribute('data-drilldown-open');
+          if (wasOpen && !isOpen) {
+            diveLock = true;
+            rearmed = false;
+            lastGestureActivityTime = Date.now();
+          }
+          wasOpen = isOpen;
+          var isStateOpen = html.getAttribute('data-drilldown-state') === 'open';
+          if (isStateOpen && !wasStateOpen) sendPrefToChild();
+          wasStateOpen = isStateOpen;
+        });
+        observer.observe(html, { attributes: true, attributeFilter: ['data-drilldown-open', 'data-drilldown-state'] });
+      }
+      function watchBlockingModes() {
+        if (typeof MutationObserver === 'undefined') return;
+        var observer = new MutationObserver(cancelDwellIfIneligible);
+        observer.observe(html, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-present', 'data-route-picking', 'data-route-active', 'data-lens-active']
+        });
+      }
+
+      render();
+      if (Archify.view) {
+        if (capable && typeof Archify.view.onChange === 'function') Archify.view.onChange(onCameraChange);
+        if (typeof Archify.view.on === 'function') {
+          if (escapeCapable) Archify.view.on('minZoomOut', onMinZoomOut);
+          Archify.view.on('gesture', onGesture);
+        }
+      }
+      watchOwnAscend();
+      watchBlockingModes();
+      if (reducedQuery) {
+        if (typeof reducedQuery.addEventListener === 'function') reducedQuery.addEventListener('change', cancelDwellIfIneligible);
+        else if (typeof reducedQuery.addListener === 'function') reducedQuery.addListener(cancelDwellIfIneligible);
+      }
+      document.addEventListener('pointerdown', clearLockOnInput, true);
+      document.addEventListener('keydown', clearLockOnInput, true);
+      container.addEventListener('pointerleave', function () { cancelDwell(); });
+      container.addEventListener('pointercancel', function () { cancelDwell(); });
+      window.addEventListener('blur', function () { cancelDwell(); });
+      if (btn) btn.addEventListener('click', function () { setEnabled(!enabled); });
+
+      return {
+        capable: capable,
+        enabled: function () { return enabled; },
+        toggle: function () { return setEnabled(!enabled); },
+        receivePreference: function (nextEnabled) { setEnabled(!!nextEnabled, { persist: true }); }
+      };
+    })();
+
+
+    /* ============================================================
        Global keyboard shortcuts
        ? -> open Diagram Guide
        T -> toggle theme
@@ -14993,9 +16682,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
          M -> toggle Semantic Radar
          L -> toggle Semantic Lens
          R -> start/clear Route Probe
+         Z -> toggle opt-in zoom-dive
          / -> open node finder or the active route endpoint picker
          + / - -> zoom, 0 -> reset view
          Escape -> clear temporary trace/focus/view first, then exit presentation
+         Backspace -> Escape alias while descended or inside a nested child
        Ignored when focus is inside an input/textarea/contenteditable.
        ============================================================ */
     document.addEventListener('keydown', function (e) {
@@ -15003,7 +16694,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       if (e.defaultPrevented) return;
       var t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (Archify.preset && Archify.preset.isOpen() && e.key !== 'Escape' && e.key !== 's' && e.key !== 'S') {
+      var isNestedChild = document.documentElement.getAttribute('data-bundle-nested') === 'true';
+      var isEscape = e.key === 'Escape' || (e.key === 'Backspace'
+        && ((Archify.drilldown && Archify.drilldown.active()) || isNestedChild));
+      if (Archify.preset && Archify.preset.isOpen() && !isEscape && e.key !== 's' && e.key !== 'S') {
         Archify.preset.close(false);
       }
       if (e.key === '?') {
@@ -15023,6 +16717,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (!Archify.exportMenu.isOpen()) Archify.exportMenu.open();
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
+        if (document.documentElement.getAttribute('data-bundle-nested') === 'true'
+          || document.documentElement.getAttribute('data-drilldown-level') === '1') return;
         Archify.presentation.toggle();
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
@@ -15033,6 +16729,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         Archify.routeProbe.toggle({ focusNode: true });
+      } else if ((e.key === 'z' || e.key === 'Z') && !e.repeat
+        && !(t && (t.tagName === 'SELECT' || t.getAttribute('role') === 'textbox'))) {
+        e.preventDefault();
+        if (Archify.dive && Archify.dive.toggle) Archify.dive.toggle();
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         Archify.view.zoomIn();
@@ -15042,33 +16742,43 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       } else if (e.key === '0') {
         e.preventDefault();
         Archify.view.reset();
-      } else if (e.key === 'Escape' && Archify.preset.isOpen()) {
+      } else if (isEscape && Archify.preset.isOpen()) {
         e.preventDefault();
         Archify.preset.close(true);
-      } else if (e.key === 'Escape' && Archify.semanticLens.isOpen()) {
+      } else if (isEscape && Archify.semanticLens.isOpen()) {
         e.preventDefault();
         Archify.semanticLens.close({ restoreFocus: true });
-      } else if (e.key === 'Escape' && Archify.semanticLens.active()) {
+      } else if (isEscape && Archify.semanticLens.active()) {
         e.preventDefault();
         Archify.semanticLens.clear({ preserveView: true });
-      } else if (e.key === 'Escape' && Archify.guide.isOpen()) {
+      } else if (isEscape && Archify.guide.isOpen()) {
         e.preventDefault();
         Archify.guide.close({ restoreFocus: true });
-      } else if (e.key === 'Escape' && Archify.radar.isOpen()) {
+      } else if (isEscape && Archify.radar.isOpen()) {
         e.preventDefault();
         Archify.radar.close({ restoreFocus: true });
-      } else if (e.key === 'Escape' && Archify.routeProbe.active()) {
+      } else if (isEscape && Archify.routeProbe.active()) {
         e.preventDefault();
         Archify.routeProbe.escape({ restoreFocus: true });
-      } else if (e.key === 'Escape' && Archify.intentTrace.active()) {
+      } else if (isEscape && Archify.intentTrace.active()) {
         e.preventDefault();
         Archify.intentTrace.clear();
-      } else if (e.key === 'Escape' && Archify.focus.active()) {
+      } else if (isEscape && Archify.focus.active()) {
         e.preventDefault();
         Archify.focus.clear({ restoreFocus: true });
-      } else if (e.key === 'Escape' && Archify.presentation.active()) {
+      } else if (isEscape && Archify.drilldown && Archify.drilldown.active()) {
+        e.preventDefault();
+        Archify.drilldown.closeInnermost();
+      } else if (isEscape && Archify.presentation.active()) {
         e.preventDefault();
         Archify.presentation.exit();
+      } else if (isEscape && isNestedChild) {
+        e.preventDefault();
+        if (Archify.drilldown && Archify.drilldown.escapeToParent) {
+          Archify.drilldown.escapeToParent();
+        } else if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'archify:drilldown-escape' }, '*');
+        }
       }
     });
   </script>

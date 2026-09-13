@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "bundle_type": "drilldown",
+  "entry": "checkout-platform",
+  "max_depth": 2,
+  "diagrams": [
+    {
+      "id": "checkout-platform",
+      "file": "checkout-platform.html",
+      "diagram_type": "architecture",
+      "title": "Checkout Platform — Fraud Gate",
+      "level": 0,
+      "node_count": 8,
+      "spec_sha256": "434ce92d5098ad203120b95361f9331e600bd8a979f60ea8ed4c6929284b3466",
+      "artifact_sha256": "e5aa106178d4a11522ff3585a2e1ebd0ab84d07c9aa4e072b149e6cd412caf87"
+    },
+    {
+      "id": "ledger-flow",
+      "file": "ledger-flow.html",
+      "diagram_type": "workflow",
+      "title": "Ledger Posting Flow",
+      "level": 1,
+      "node_count": 4,
+      "spec_sha256": "12ff158044c98931ceb46aa3ace67d99e8fd889a30880d2269dc2f5ea99c3694",
+      "artifact_sha256": "de863096be702f03876175d6a80f6b1ebbadae80551b1a718330fa073ec036d0"
+    },
+    {
+      "id": "payments",
+      "file": "payments.html",
+      "diagram_type": "architecture",
+      "title": "Payment Rail Internals",
+      "level": 1,
+      "node_count": 4,
+      "spec_sha256": "32a84c752ad03d4734cfa3cc0bc302279210685e9210db32056f201eaa0da14b",
+      "artifact_sha256": "55bbb73a56f7d927946b25d520c1ff3c5eeb4e2012eb138c9191f58025098333"
+    }
+  ],
+  "drilldowns": [
+    {
+      "parent": "checkout-platform",
+      "component": "queue",
+      "child": "ledger-flow",
+      "label": "Order Events"
+    },
+    {
+      "parent": "checkout-platform",
+      "component": "payments",
+      "child": "payments",
+      "label": "Payment Rail"
+    }
+  ]
+}

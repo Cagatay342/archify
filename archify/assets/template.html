@@ -1412,9 +1412,41 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       pointer-events: none;
     }
     .overview-map-feedback[hidden] { display: none; }
+    .archify-dive-status {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 13;
+      max-width: min(16rem, calc(100% - 2rem));
+      margin: 0;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid color-mix(in srgb, var(--frontend-stroke) 52%, var(--toolbar-border));
+      border-radius: 0.5rem;
+      background: var(--toolbar-menu-bg);
+      color: var(--toolbar-text);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      font-size: 0.62rem;
+      line-height: 1.35;
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+    /* Stays mounted (never [hidden]) so aria-live text changes are
+       reliably announced by assistive tech; collapses to zero visual
+       footprint when empty instead of being removed from the a11y tree. */
+    .archify-dive-status:empty {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    html[data-embed="true"] .archify-dive-status { display: none; }
     .focus-chip[data-radar-yielded="true"] { display: none !important; }
     .diagram-nav #btn-route-probe[aria-pressed="true"] {
       color: var(--backend-stroke);
+      background: var(--toolbar-hover);
+    }
+    .diagram-nav #btn-drilldown-dive[aria-pressed="true"] {
+      color: var(--frontend-stroke);
       background: var(--toolbar-hover);
     }
     .diagram-nav #btn-semantic-lens[aria-expanded="true"],
@@ -4365,6 +4397,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       stroke: currentColor;
       stroke-width: 1;
     }
+    /* Belirginleştirme: always on, independent of the zoom-dive toggle.
+       detail-level "full" is the camera's own >=1.75 scale (or semantic
+       mode) threshold, written on .diagram-container by viewer-camera.js
+       apply() — never mirrored onto html for this purpose. */
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark {
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.22);
+    }
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark rect,
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark path {
+      stroke-width: 1.8;
+    }
+    .diagram-container[data-detail-level="full"] #btn-drilldown-descend:not([hidden]) {
+      border: 1px solid var(--frontend-stroke);
+      border-radius: 0.35rem;
+      color: var(--frontend-stroke);
+    }
+    /* Deliberately NOT "svg [data-node-id]…" — export.js's own CSS
+       harvest (serializeSvg's hostStyle) copies any rule whose selector
+       list starts with "svg" into the exported/downloaded SVG's embedded
+       style, which would add new bytes to canonical export output even
+       though the attribute itself is always stripped by export cleanup.
+       ".diagram-container …" reaches the same live nodes (the SVG is
+       always .diagram-container's direct child) without matching that
+       harvest, keeping export byte-identical. */
+    .diagram-container [data-node-id][data-dive-preview="true"] > rect:last-of-type {
+      stroke: var(--frontend-stroke);
+      stroke-width: 2.4;
+      stroke-dasharray: 4 3;
+    }
     svg[data-locate-active] [data-node-id] { opacity: 0.13; }
     svg[data-locate-active] [data-node-id][data-locate-state="touched"] { opacity: 1; }
     svg[data-locate-active] [data-node-id][data-locate-state="stale"] { opacity: 1; }
@@ -5612,12 +5675,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="overview-map-hint" aria-hidden="true"><span>{{i18n:viewer.radar.click}}</span><span>{{i18n:viewer.radar.drag}}</span></div>
       </div>
       <p class="overview-map-feedback no-print" id="overview-map-feedback" role="status" aria-live="polite" hidden>{{i18n:viewer.radar.space}}</p>
+      <p class="archify-dive-status no-print" id="archify-dive-status" role="status" aria-live="polite"></p>
       <div class="diagram-nav no-print" role="toolbar" aria-label="{{i18n:viewer.nav.controls}}">
         <button id="btn-route-probe" type="button" aria-label="{{i18n:viewer.nav.route}}" aria-pressed="false" aria-controls="route-probe" title="{{i18n:viewer.nav.route.title}}">{{i18n:viewer.nav.route.short}}</button>
         <button id="btn-overview-map" type="button" aria-label="{{i18n:viewer.nav.radar}}" aria-expanded="false" aria-controls="overview-map" title="{{i18n:viewer.nav.radar.title}}">{{i18n:viewer.nav.radar.short}}</button>
         <button id="btn-semantic-lens" type="button" aria-label="{{i18n:viewer.nav.lens}}" aria-haspopup="dialog" aria-expanded="false" aria-pressed="false" aria-controls="semantic-lens" title="{{i18n:viewer.nav.lens.title}}">{{i18n:viewer.nav.lens.short}}</button>
         <button id="btn-node-finder" type="button" aria-label="{{i18n:viewer.nav.find}}" aria-haspopup="dialog" aria-expanded="false" aria-controls="node-finder" title="{{i18n:viewer.nav.find.title}}" data-node-finder-trigger><span class="diagram-nav-icon find" aria-hidden="true"></span></button>
         <button id="btn-diagram-guide" type="button" aria-label="{{i18n:viewer.nav.guide}}" aria-haspopup="dialog" aria-expanded="false" aria-controls="diagram-guide" title="{{i18n:viewer.nav.guide.title}}"><span class="diagram-nav-icon guide" aria-hidden="true"></span></button>
+        <button id="btn-drilldown-dive" data-view="dive" type="button" hidden aria-pressed="false" aria-label="{{i18n:viewer.nav.dive}}" title="{{i18n:viewer.nav.dive.title}}">{{i18n:viewer.nav.dive.short}}</button>
         <button data-view="out" type="button" aria-label="{{i18n:viewer.nav.zoomOut}}" title="{{i18n:viewer.nav.zoomOut.title}}"><span class="diagram-nav-icon minus" aria-hidden="true"></span></button>
         <button data-view="reset" type="button" aria-label="{{i18n:viewer.nav.reset}}" title="{{i18n:viewer.nav.reset.title}}"><span class="diagram-nav-detail" data-view-detail hidden>{{i18n:viewer.nav.read}}</span><span class="diagram-nav-percent" data-view-percent>100%</span></button>
         <button data-view="in" type="button" aria-label="{{i18n:viewer.nav.zoomIn}}" title="{{i18n:viewer.nav.zoomIn.title}}"><span class="diagram-nav-icon plus" aria-hidden="true"></span></button>
@@ -6058,6 +6123,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           el.removeAttribute('data-locate-state');
           el.removeAttribute('data-locate-inside');
         });
+        Array.prototype.forEach.call(clone.querySelectorAll('[data-dive-preview]'), function (el) {
+          el.removeAttribute('data-dive-preview');
+        });
         Array.prototype.forEach.call(clone.querySelectorAll('[data-locate-inside-count]'), function (el) {
           el.remove();
         });
@@ -6141,7 +6209,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           !clone.hasAttribute('data-chapter-preview') &&
           !clone.style.getPropertyValue('transform') &&
           !clone.style.getPropertyValue('clip-path') &&
-          clone.querySelectorAll('[data-locate-state], [data-locate-inside], [data-locate-inside-count], [data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-reach-match], [data-reach-origin], [data-reach-depth], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth], [data-source-evidence-beacon], [data-source-evidence-count], [data-source-evidence-original-label], [data-detail], [data-detail-anchor]').length === 0;
+          clone.querySelectorAll('[data-locate-state], [data-locate-inside], [data-locate-inside-count], [data-dive-preview], [data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-reach-match], [data-reach-origin], [data-reach-depth], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth], [data-source-evidence-beacon], [data-source-evidence-count], [data-source-evidence-original-label], [data-detail], [data-detail-anchor]').length === 0;
       }
 
 
@@ -15982,6 +16050,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           applyLocate(svg, data.nodes);
           return;
         }
+        // Small hook for Faz 3b's zoom-dive: hands the toggle preference
+        // down through this same validated hello/session channel (the
+        // only path a file:// child has, since it cannot share the
+        // parent's localStorage). Session-gated like every other message
+        // here; the actual preference state lives in Archify.dive, not here.
+        if (data.type === 'archify:dive-pref') {
+          if (typeof data.session !== 'number' || data.session !== helloSession) return;
+          if (Archify.dive && typeof Archify.dive.receivePreference === 'function') {
+            Archify.dive.receivePreference(!!data.enabled);
+          }
+          return;
+        }
         if (data.type === 'archify:drilldown-ascend-request') {
           if (typeof data.toDepth !== 'number' || !isFinite(data.toDepth) || data.toDepth < 0) return;
           if (typeof data.session !== 'number' || data.session !== helloSession) return;
@@ -16105,9 +16185,348 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         ascendTo: ascendTo,
         closeInnermost: closeInnermost,
         escapeToParent: escapeToParent,
-        syncPassport: syncPassport
+        syncPassport: syncPassport,
+        // Faz 3b hook: the session number of the currently-open direct
+        // child's handshake (or null), so dive.js can address exactly that
+        // frame/session for its own archify:dive-pref message without
+        // reaching into this closure's private `current`.
+        activeChildSession: function () { return current ? current.session : null; }
       };
     })();
+
+        /* ============================================================
+       Zoom-dive — opt-in automatic descend triggered by manual zoom.
+       Belirginleştirme (the always-on drilldown-mark/Descend highlight at
+       full detail) is pure CSS keyed off the existing
+       .diagram-container[data-detail-level="full"] attribute the camera
+       already writes; nothing here drives it. Everything below is the
+       opt-in toggle, the dwell-gated auto-descend and the double
+       zoom-out escape, reading Archify.view/Archify.drilldown only
+       through their existing public interface — viewer-camera.js is not
+       touched by this fragment.
+       ============================================================ */
+    Archify.dive = (function () {
+      var STORAGE_KEY = 'archify-dive';
+      var DWELL_MS = 250;
+      var DIVE_SCALE = 2.5;
+      var CAMERA_EPSILON_SCALE = 0.004;
+      var CAMERA_EPSILON_PX = 0.5;
+      var ESCAPE_WINDOW_MS = 600;
+      // A gesture 'start' only lifts the redive lock once at least this
+      // much time has passed since any gesture activity on THIS document
+      // (start/move/end/cancel all count) — a still-continuing physical
+      // gesture keeps re-touching that clock (wheel ticks group within
+      // 150ms in viewer-camera.js, well under this), so only an actual
+      // pause followed by a fresh gesture satisfies it.
+      var GESTURE_SILENCE_MS = 400;
+      var html = document.documentElement;
+      var svg = document.querySelector('.diagram-container svg');
+      var container = document.querySelector('.diagram-container');
+      var btn = document.getElementById('btn-drilldown-dive');
+      var status = document.getElementById('archify-dive-status');
+      var reducedQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      var nestedChild = html.getAttribute('data-bundle-nested') === 'true';
+      var embed = html.getAttribute('data-embed') === 'true';
+      // Two independent capabilities: "capable" is this document's own
+      // dive-in target (toggle button + dwell); "escapeCapable" is being
+      // able to zoom-out-escape to a parent, which a leaf with no further
+      // drilldown of its own still needs — a leaf must not lose the
+      // minZoomOut subscription merely because it has nothing to dive into.
+      var capable = !embed && !!(svg && svg.querySelector('[data-drilldown-child]'));
+      var escapeCapable = !embed && nestedChild;
+
+      function text(key, values) {
+        return typeof viewerText === 'function' ? viewerText(key, values) : key;
+      }
+
+      if (!capable && !escapeCapable) {
+        if (btn) btn.hidden = true;
+        return {
+          capable: false,
+          enabled: function () { return false; },
+          toggle: function () { return false; },
+          receivePreference: function () {}
+        };
+      }
+
+      function readStored() {
+        try { return localStorage.getItem(STORAGE_KEY); } catch (_) { return null; }
+      }
+      function writeStored(next) {
+        try {
+          if (next) localStorage.setItem(STORAGE_KEY, 'on');
+          else localStorage.removeItem(STORAGE_KEY);
+        } catch (_) {}
+      }
+
+      var enabled = readStored() === 'on';
+      var dwell = null;
+      var diveLock = false;
+      var rearmed = true;
+      var lastGestureActivityTime = 0;
+      var minZoomOutLog = [];
+      var wasOpen = html.hasAttribute('data-drilldown-open');
+      var wasStateOpen = html.getAttribute('data-drilldown-state') === 'open';
+
+      function render() {
+        if (btn) {
+          btn.hidden = !capable;
+          btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        }
+        if (enabled) html.setAttribute('data-dive', 'on');
+        else html.removeAttribute('data-dive');
+      }
+      // Same-origin (http) children already see this toggle through shared
+      // localStorage; a file:// child cannot, so the parent also hands it
+      // down through the same validated handshake channel Archify.drilldown
+      // owns (its own hello/ack/session protocol), once ACK-open and again
+      // on every toggle change, so a file:// child stays in sync too.
+      function sendPrefToChild() {
+        var frame = document.getElementById('archify-drilldown-frame');
+        var session = Archify.drilldown && typeof Archify.drilldown.activeChildSession === 'function'
+          ? Archify.drilldown.activeChildSession() : null;
+        if (!frame || !frame.contentWindow || typeof session !== 'number') return;
+        try {
+          frame.contentWindow.postMessage({ type: 'archify:dive-pref', enabled: enabled, session: session }, '*');
+        } catch (_) {}
+      }
+      function setEnabled(next, options) {
+        options = options || {};
+        enabled = !!next;
+        if (options.persist !== false) writeStored(enabled);
+        if (!enabled) { cancelDwell(); minZoomOutLog = []; }
+        render();
+        if (options.announceToChild !== false) sendPrefToChild();
+        return enabled;
+      }
+
+      function mobileContained() {
+        return window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram');
+      }
+      function reducedMotion() {
+        return !!(reducedQuery && reducedQuery.matches);
+      }
+      // Route Probe picking/result, Semantic Lens open and Presentation are
+      // deliberate, exclusive exploration modes — genuinely incompatible
+      // with an automatic descend. Intent Trace's own "active" node is
+      // just its ordinary 90ms fine-pointer hover preview, which is true
+      // almost the entire time a real mouse is hovering the very node
+      // being wheel-zoomed (the normal way a reader would trigger a dive):
+      // treating that as blocking would make the feature nearly
+      // unreachable from a real mouse, so it is deliberately excluded here.
+      function blockingActive() {
+        if (Archify.routeProbe && Archify.routeProbe.active && Archify.routeProbe.active()) return true;
+        if (Archify.semanticLens && Archify.semanticLens.active && Archify.semanticLens.active()) return true;
+        if (Archify.presentation && Archify.presentation.active && Archify.presentation.active()) return true;
+        return false;
+      }
+      function drilldownOpenOrBusy() {
+        return !!(Archify.drilldown && Archify.drilldown.active && Archify.drilldown.active());
+      }
+      function clearDwellVisual() {
+        if (dwell && dwell.node) dwell.node.removeAttribute('data-dive-preview');
+        if (status) status.textContent = '';
+      }
+      function cancelDwell() {
+        if (!dwell) return;
+        window.clearTimeout(dwell.timer);
+        clearDwellVisual();
+        dwell = null;
+      }
+      // Positions the persistent live region right above the node, in the
+      // container's own coordinate space, instead of a fixed page corner.
+      function positionStatus(node) {
+        if (!status || !node || typeof node.getBoundingClientRect !== 'function') return;
+        var nodeRect = node.getBoundingClientRect();
+        var containerRect = container.getBoundingClientRect();
+        var left = nodeRect.left - containerRect.left + nodeRect.width / 2;
+        var top = nodeRect.top - containerRect.top;
+        status.style.left = Math.max(4, left) + 'px';
+        status.style.top = Math.max(4, top - 22) + 'px';
+      }
+      function showDwell(node) {
+        node.setAttribute('data-dive-preview', 'true');
+        if (status) {
+          positionStatus(node);
+          status.textContent = text('viewer.dive.opening', {
+            label: node.getAttribute('data-node-label') || node.getAttribute('data-node-id') || ''
+          });
+        }
+      }
+      function hitTestNode() {
+        var viewport = Archify.view && typeof Archify.view.logicalViewport === 'function'
+          ? Archify.view.logicalViewport() : null;
+        if (!viewport) return null;
+        var cx = viewport.x + viewport.width / 2;
+        var cy = viewport.y + viewport.height / 2;
+        var nodes = svg.querySelectorAll('[data-drilldown-child]');
+        for (var i = 0; i < nodes.length; i += 1) {
+          var node = nodes[i];
+          var box;
+          try { box = node.getBBox(); } catch (_) { continue; }
+          if (!box || box.width <= 0 || box.height <= 0) continue;
+          if (cx >= box.x && cx <= box.x + box.width && cy >= box.y && cy <= box.y + box.height) return node;
+        }
+        return null;
+      }
+      function eligible(snapshot) {
+        return enabled
+          && snapshot.mode === 'manual'
+          && snapshot.scale >= DIVE_SCALE
+          && !reducedMotion()
+          && !mobileContained()
+          && !blockingActive()
+          && !diveLock
+          && rearmed
+          && !drilldownOpenOrBusy();
+      }
+      function cameraMoved(snapshot) {
+        if (!dwell) return false;
+        return Math.abs(snapshot.scale - dwell.scale) > CAMERA_EPSILON_SCALE
+          || Math.abs(snapshot.x - dwell.x) > CAMERA_EPSILON_PX
+          || Math.abs(snapshot.y - dwell.y) > CAMERA_EPSILON_PX;
+      }
+      function startDwell(node, snapshot) {
+        dwell = { node: node, scale: snapshot.scale, x: snapshot.x, y: snapshot.y, timer: 0 };
+        showDwell(node);
+        dwell.timer = window.setTimeout(function () {
+          var target = dwell && dwell.node;
+          clearDwellVisual();
+          dwell = null;
+          if (!target) return;
+          // Re-verify at fire time, not just at dwell start: eligibility
+          // (mode/scale/reduced-motion/blocking/lock) and the hit target
+          // itself can both have changed without an intervening onChange
+          // (e.g. a blocking mode opened, or reduced-motion flipped via
+          // its own change event) between the last evaluation and now.
+          var freshState = Archify.view && typeof Archify.view.state === 'function' ? Archify.view.state() : null;
+          if (!freshState || !eligible(freshState)) return;
+          if (hitTestNode() !== target) return;
+          if (!Archify.drilldown || typeof Archify.drilldown.descend !== 'function') return;
+          Archify.drilldown.descend(target.getAttribute('data-node-id'));
+        }, DWELL_MS);
+      }
+      // Dwell is only started or re-evaluated as a *candidate change* on a
+      // settled (transitioning:false) snapshot; but a loss of eligibility —
+      // camera moved beyond epsilon, or any other eligible() condition
+      // flipping false — cancels an already-running dwell immediately, on
+      // either notification, rather than waiting for settle.
+      function onCameraChange(snapshot) {
+        if (!rearmed && snapshot.scale < DIVE_SCALE) rearmed = true;
+        if (dwell && (cameraMoved(snapshot) || !eligible(snapshot))) cancelDwell();
+        if (snapshot.transitioning) return;
+        if (!eligible(snapshot)) { cancelDwell(); return; }
+        var target = hitTestNode();
+        if (!target) { cancelDwell(); return; }
+        if (dwell && dwell.node === target) return;
+        cancelDwell();
+        startDwell(target, snapshot);
+      }
+      // A blocking mode opening or reduced-motion flipping on doesn't
+      // necessarily fire a camera onChange; re-check independently.
+      function cancelDwellIfIneligible() {
+        if (!dwell) return;
+        var state = Archify.view && typeof Archify.view.state === 'function' ? Archify.view.state() : null;
+        if (!state || !eligible(state)) cancelDwell();
+      }
+      // Two minZoomOut events count only when they carry two different
+      // (source, gestureId) pairs within the window — a continuing
+      // physical gesture (same pair repeated) is one attempt, not two.
+      function onMinZoomOut(payload) {
+        if (!escapeCapable || !enabled) return;
+        if (!Archify.drilldown || typeof Archify.drilldown.escapeToParent !== 'function') return;
+        var key = payload.source + ':' + payload.gestureId;
+        var now = Date.now();
+        minZoomOutLog = minZoomOutLog.filter(function (entry) { return now - entry.time <= ESCAPE_WINDOW_MS; });
+        var last = minZoomOutLog.length ? minZoomOutLog[minZoomOutLog.length - 1] : null;
+        if (!last || last.key !== key) minZoomOutLog.push({ key: key, time: now });
+        if (minZoomOutLog.length >= 2) {
+          minZoomOutLog = [];
+          Archify.drilldown.escapeToParent();
+        }
+      }
+      // The redive lock lifts only on (i) a fresh pointerdown/keydown, or
+      // (ii) a gesture 'start' preceded by >= GESTURE_SILENCE_MS of no
+      // gesture activity at all on this document — deliberately time-based
+      // and document-local rather than comparing gesture ids, since the
+      // escaping gesture physically happened in a different document (the
+      // child) with its own independent id space; comparing ids across
+      // that boundary cannot tell a continuing wheel flow from a fresh one,
+      // but silence can. watchOwnAscend() seeds the clock to "now" the
+      // instant the lock is set, so a wheel tick landing on the
+      // newly-revealed parent a few milliseconds later (the same physical
+      // gesture) still fails the silence check.
+      function onGesture(payload) {
+        if (payload.phase === 'start') {
+          // No prior activity this document has ever seen (lastGestureActivityTime
+          // still 0) always counts as past the threshold — GESTURE_SILENCE_MS + 1
+          // is a small finite stand-in for that, deliberately not an
+          // unbounded numeric literal: this source ships verbatim inside
+          // every generated viewer artifact (every delivered diagram HTML),
+          // and archify's own artifact validators reject any such literal
+          // appearing in delivered output as a likely non-finite computed
+          // value, whether or not it is actually one.
+          var silence = lastGestureActivityTime ? (Date.now() - lastGestureActivityTime) : (GESTURE_SILENCE_MS + 1);
+          if (diveLock && silence >= GESTURE_SILENCE_MS) diveLock = false;
+        }
+        lastGestureActivityTime = Date.now();
+      }
+      function clearLockOnInput() { diveLock = false; }
+      function watchOwnAscend() {
+        if (typeof MutationObserver === 'undefined') return;
+        var observer = new MutationObserver(function () {
+          var isOpen = html.hasAttribute('data-drilldown-open');
+          if (wasOpen && !isOpen) {
+            diveLock = true;
+            rearmed = false;
+            lastGestureActivityTime = Date.now();
+          }
+          wasOpen = isOpen;
+          var isStateOpen = html.getAttribute('data-drilldown-state') === 'open';
+          if (isStateOpen && !wasStateOpen) sendPrefToChild();
+          wasStateOpen = isStateOpen;
+        });
+        observer.observe(html, { attributes: true, attributeFilter: ['data-drilldown-open', 'data-drilldown-state'] });
+      }
+      function watchBlockingModes() {
+        if (typeof MutationObserver === 'undefined') return;
+        var observer = new MutationObserver(cancelDwellIfIneligible);
+        observer.observe(html, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-present', 'data-route-picking', 'data-route-active', 'data-lens-active']
+        });
+      }
+
+      render();
+      if (Archify.view) {
+        if (capable && typeof Archify.view.onChange === 'function') Archify.view.onChange(onCameraChange);
+        if (typeof Archify.view.on === 'function') {
+          if (escapeCapable) Archify.view.on('minZoomOut', onMinZoomOut);
+          Archify.view.on('gesture', onGesture);
+        }
+      }
+      watchOwnAscend();
+      watchBlockingModes();
+      if (reducedQuery) {
+        if (typeof reducedQuery.addEventListener === 'function') reducedQuery.addEventListener('change', cancelDwellIfIneligible);
+        else if (typeof reducedQuery.addListener === 'function') reducedQuery.addListener(cancelDwellIfIneligible);
+      }
+      document.addEventListener('pointerdown', clearLockOnInput, true);
+      document.addEventListener('keydown', clearLockOnInput, true);
+      container.addEventListener('pointerleave', function () { cancelDwell(); });
+      container.addEventListener('pointercancel', function () { cancelDwell(); });
+      window.addEventListener('blur', function () { cancelDwell(); });
+      if (btn) btn.addEventListener('click', function () { setEnabled(!enabled); });
+
+      return {
+        capable: capable,
+        enabled: function () { return enabled; },
+        toggle: function () { return setEnabled(!enabled); },
+        receivePreference: function (nextEnabled) { setEnabled(!!nextEnabled, { persist: true }); }
+      };
+    })();
+
 
     /* ============================================================
        Global keyboard shortcuts
@@ -16119,6 +16538,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
          M -> toggle Semantic Radar
          L -> toggle Semantic Lens
          R -> start/clear Route Probe
+         Z -> toggle opt-in zoom-dive
          / -> open node finder or the active route endpoint picker
          + / - -> zoom, 0 -> reset view
          Escape -> clear temporary trace/focus/view first, then exit presentation
@@ -16165,6 +16585,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         Archify.routeProbe.toggle({ focusNode: true });
+      } else if ((e.key === 'z' || e.key === 'Z') && !e.repeat
+        && !(t && (t.tagName === 'SELECT' || t.getAttribute('role') === 'textbox'))) {
+        e.preventDefault();
+        if (Archify.dive && Archify.dive.toggle) Archify.dive.toggle();
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         Archify.view.zoomIn();

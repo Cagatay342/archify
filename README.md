@@ -249,7 +249,7 @@ Settings:
 | Play a guided story / change chapter | <kbd>P</kbd> / <kbd>[</kbd> <kbd>]</kbd> |
 | Enter Presentation Stage | <kbd>F</kbd> |
 | Choose visual style (`S` cycles) / toggle theme / open Export | <kbd>S</kbd> / <kbd>T</kbd> / <kbd>E</kbd> |
-| Zoom or reset | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> |
+| Zoom or reset | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>/wheel/pinch/<kbd>Z</kbd>-dive |
 
 Stable links can restore `#focus=<id>`, `#focus=<id>&reach=upstream|downstream`, `#relation=<id>`, `#route=<source>~<target>`, `#lens=<kind>~<kind>`, and `#view=<view-id>`. Reader-driven motion is finite, respects `prefers-reduced-motion`, and never enters canonical exports.
 

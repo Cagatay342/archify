@@ -336,6 +336,21 @@ Diagram Guide controls are hidden while nested; the zoom in/out/reset controls a
 control are not — both work at any nested depth, since descending further is exactly what a
 nested viewer needs to keep offering.
 
+**Zoom-dive (opt-in).** Manual zoom can also trigger a descend, but only when the reader turns it
+on: the `Z` shortcut or the `.diagram-nav` toggle (visible only when the current diagram itself
+has at least one drilldown row), persisted to `localStorage['archify-dive']`, default off. With it
+on, zooming a drilldown-capable node past scale 2.5 under manual camera control (never a semantic
+Focus/Guided/Radar reveal, never under `prefers-reduced-motion` or the mobile-contained mode)
+starts a 250ms visible dwell (a ring on the node, a status line) before calling the same
+`descend(componentId)` used by click/keyboard/mark; panning or zooming away during the dwell
+cancels it. Wheel/pinch zooming out twice at the 1x floor inside a nested child (two distinct
+gestures, within 600ms) ascends one level, exactly as a click on the parent's own breadcrumb rung
+would. After an ascend, a lock prevents the same node from immediately re-diving until the reader
+makes a new gesture. The drilldown-mark and Descend-control highlight at full camera detail
+(scale ≥ 1.75) is independent of this toggle and always on. None of this changes `descend`/`back`
+themselves, the handshake, export, or SVG bytes — it is a Viewer-only trigger, documented in full
+in `viewer/README.md` "Drilldown dive contract".
+
 **Motion.** Descend and ascend run at roughly 170 ms and switch instantly under
 `prefers-reduced-motion`.
 

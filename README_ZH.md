@@ -245,7 +245,7 @@ node bin/archify.mjs deliver workflow examples/agent-tool-call.workflow.json /tm
 | 播放故事 / 切换章节 | <kbd>P</kbd> / <kbd>[</kbd> <kbd>]</kbd> |
 | 进入 Presentation Stage | <kbd>F</kbd> |
 | 选择视觉风格（<kbd>S</kbd> 循环）/ 切换主题 / 打开 Export | <kbd>S</kbd> / <kbd>T</kbd> / <kbd>E</kbd> |
-| 缩放或复位 | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> |
+| 缩放或复位 | <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>/wheel/pinch/<kbd>Z</kbd>-dive |
 
 稳定链接可以恢复 `#focus=<id>`、`#focus=<id>&reach=upstream|downstream`、`#relation=<id>`、`#route=<source>~<target>`、`#lens=<kind>~<kind>` 和 `#view=<view-id>`。读者触发的动态有限运行、遵守 `prefers-reduced-motion`，并且不会进入标准导出。
 

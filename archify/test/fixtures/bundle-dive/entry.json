@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Dive Fixture \u2014 Entry",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1200,
+      900
+    ]
+  },
+  "components": [
+    {
+      "id": "hub",
+      "type": "backend",
+      "label": "Hub",
+      "sublabel": "centered",
+      "pos": [
+        530,
+        420
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "drilldown": "middle"
+    },
+    {
+      "id": "aux",
+      "type": "external",
+      "label": "Aux",
+      "pos": [
+        20,
+        20
+      ],
+      "size": [
+        80,
+        40
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "aux-hub",
+      "from": "aux",
+      "to": "hub"
+    }
+  ]
+}

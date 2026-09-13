@@ -9,7 +9,8 @@ and legend previews, `route-probe.js` for directed paths and Route Journey,
 `guided-views.js` for authored chapters and Story playback,
 `focus.js` for semantic selection, relationships, reachability and shared flow tokens,
 `export.js` for export menus, serialization, images, cards, clipboard and WebM,
-`export-cleanup.js` for its private SVG clone cleanup, and
+`export-cleanup.js` for its private SVG clone cleanup, `dive.js` for the
+opt-in zoom-triggered auto-descend, and
 `template.source.html` for the rest of the Viewer (including the
 `Archify.drilldown` descend/ascend/handshake IIFE itself, which stays inline
 rather than as its own fragment).
@@ -21,7 +22,10 @@ From `archify/`, run `npm run generate:viewer` after editing any source.
 `npm run check:viewer` verifies freshness without writing; `npm test` includes
 that check. Assembly inserts each fragment verbatim at its fixed marker.
 Reader, Chrome Layout, Camera, Radar, Motion Governor, Finder, Intent Trace, Semantic Lens, Route Probe, Guided Views, Focus and Export
-extractions preserve delivered HTML bytes. Export cleanup adds a
+extractions preserve delivered HTML bytes — they were pulled out of
+`template.source.html` unchanged. `dive.js` is not one of those: it is a new
+fragment holding new functionality, not bytes moved out of somewhere else.
+Export cleanup adds a
 private function and a call, changing script bytes but preserving cleanup order
 and SVG output. All fragments retain classic-script scope and initialization order.
 Generated output is not a second editing
@@ -1225,6 +1229,115 @@ rung. `drilldown-{viewer,keyboard,stale,mark,locate}.test.mjs` and
 `bundle-message-origin-browser.test.mjs` cover the single-level handshake,
 keyboard ladder, stale-card rendering, mark rendering, locate projection and
 cross-origin/message-boundary guarantees this contract keeps.
+
+## Drilldown dive contract
+
+`Archify.dive` (`dive.js`) initializes once, right after `Archify.drilldown`,
+in every rendered diagram. It never mutates `Archify.drilldown`'s own state
+directly and reads `Archify.view` only through the Camera contract's public
+`onChange`/`on`/`off`/`logicalViewport` interface — `viewer-camera.js` itself
+is untouched by this module. A diagram with no `[data-drilldown-child]` node
+anywhere in its own SVG (neither an entry's own manifest row nor a nested
+child's received subtree row) is not "capable": the toggle button stays
+`hidden` and `Z` is a no-op. That alone does not mean no listener is
+registered: a nested child with no drilldown of its own (a leaf) is still
+"escape-capable" (`!embed && nestedChild`) and keeps its `minZoomOut` and
+`gesture` listeners for the zoom-out escape below — a leaf must not lose
+its ability to escape merely because it has nothing left to dive into. Only
+a diagram that is neither capable nor a nested child registers no listener
+at all. Embed pages are never capable or escape-capable either, the same as
+Focus/Lens/Route reject embed at their own entry points.
+
+- **Belirginleştirme is always on, independent of the toggle.** The camera's
+  own `detailLevel()` `full` threshold (scale ≥ 1.75, or semantic mode) is
+  already written as `data-detail-level="full"` on `.diagram-container` by
+  `viewer-camera.js` `apply()`; CSS alone keys `.archify-drilldown-mark` and
+  the Passport `#btn-drilldown-descend` control off that existing attribute.
+  This needs no code in `dive.js` and runs whether or not zoom-dive is on.
+- **Toggle.** `Z` (ignored inside inputs, same guard as every other letter
+  shortcut) and `#btn-drilldown-dive` (`data-view="dive"`, inside
+  `.diagram-nav`) both call the same `toggle()`. State is
+  `localStorage['archify-dive']` (`'on'` sets `html[data-dive="on"]`; any
+  other value, including absent, is off), read/written through the same
+  try/catch pattern as `motion-governor.js`'s `archify-motion` key, default
+  off.
+- **Eligibility is re-checked on every settled camera snapshot.** `onChange`
+  fires twice per `apply()` (`transitioning:true` then `false`); dwell is
+  only started or re-evaluated on the `transitioning:false` call. A candidate
+  requires the toggle on, `mode === 'manual'` (never `'semantic'` — a
+  Focus/Guided/Radar reveal never dives even past scale 2.5), `scale >= 2.5`,
+  no `prefers-reduced-motion`, not the mobile-contained wide-diagram mode
+  (`window.innerWidth <= 720 && container.hasAttribute('data-wide-diagram')`,
+  the same predicate `viewer-camera.js` itself uses), none of Route Probe /
+  Semantic Lens / Presentation active (deliberately excluding Intent Trace,
+  whose own "active" node is just its ordinary 90ms fine-pointer hover
+  preview — almost always true while a real mouse hovers the very node
+  being wheel-zoomed, so treating it as blocking would make the feature
+  nearly unreachable from a real mouse), no redive lock, `rearmed` (below),
+  and `Archify.drilldown.active()` false (covers a handshake in flight as
+  well as an already-open child). The candidate node is whichever
+  `[data-drilldown-child]` element's own `getBBox()` contains the center of
+  `Archify.view.logicalViewport()`, in the SVG's own user-space coordinates
+  (these node groups carry no per-node transform, so `getBBox()` is already
+  in that space). No candidate, or the candidate losing eligibility, cancels
+  any dwell in progress.
+- **Dwell.** A new candidate gets `data-dive-preview="true"` (a CSS ring on
+  its own last `rect`) and an `#archify-dive-status` status line
+  (`viewer.dive.opening`, naming the node) for 250ms. Any camera change
+  exceeding a small epsilon (0.004 scale, 0.5px x/y) versus the snapshot the
+  dwell started from cancels it immediately, on either the `transitioning:
+  true` or `false` notification — waiting for settle would let a mid-flight
+  pan or zoom complete a whole dwell unnoticed. `data-dive-preview` and the
+  status line are always cleared before the dwell either fires or is
+  cancelled; `export-cleanup.js` also strips a stray `data-dive-preview` from
+  its clone as a second line of defense, since this state lives on the same
+  live SVG node the canonical export clones. When the timer fires,
+  `Archify.drilldown.descend(id)` is called once; a `false` return (missing
+  row, depth ceiling, already active) is not retried — the preview is
+  already gone by then.
+- **Zoom-out escape (nested child only).** `Archify.view.on('minZoomOut', cb)`
+  payloads carry `{source, gestureId}`; two events are counted only when
+  their `source + ':' + gestureId` differs from the previous one recorded
+  within a 600ms window — a still-continuing physical gesture (the wheel
+  floor re-firing minZoomOut on every tick, or a held pinch) repeats the same
+  pair and is one attempt, not two. On the second distinct pair,
+  `Archify.drilldown.escapeToParent()` is called once and the log is reset.
+  This entire path is skipped outside a nested child
+  (`html[data-bundle-nested]`) and when the toggle is off; at the root,
+  `escapeToParent()` itself is a no-op, so nothing happens either way.
+- **Redive lock and `rearmed`.** A `MutationObserver` on `html`'s own
+  `data-drilldown-open` attribute sets a local lock and clears `rearmed` to
+  `false` the instant that attribute is removed (this document's own child
+  just closed, whether by `back()` or by an `ascendTo` closing it from
+  above) — the same signal `Archify.drilldown` itself uses for local
+  open/closed state. The two conditions clear independently and a new dwell
+  needs both: the lock itself clears on either (i) a fresh `pointerdown` or
+  `keydown` anywhere in the document, or (ii) an `on('gesture', cb)`
+  `'start'` phase once the document has gone ≥400ms (`GESTURE_SILENCE_MS`)
+  without any gesture activity at all — deliberately time-based and
+  document-local rather than comparing `source`/`id` pairs, since the
+  gesture that caused the ascend happened in a different document (the
+  child) with its own independent id space, so only elapsed silence can
+  tell a continuing wheel flow from a fresh one. `rearmed` flips back to
+  `true` only once the camera is later seen at `scale < 2.5` on a settled
+  snapshot — the reader has zoomed back out past the dive threshold at
+  least once since the ascend. While either the lock still holds or
+  `rearmed` is still `false`, a still-eligible camera position never
+  restarts a dwell.
+- **Nothing here changes export, print or SVG bytes.** `data-dive`,
+  `data-dive-preview` and `#archify-dive-status` are `html`/HTML-layer state
+  or (transiently) one live-SVG attribute already covered by export cleanup;
+  no new attribute is added to canonical export output.
+
+`drilldown-dive-browser.test.mjs` covers: toggle off never dives even past
+scale 2.5; `Z` then a real CDP wheel zoom onto a drilldown node dives after
+the 250ms dwell, ACK-gated the same as a manual descend; a pan mid-dwell
+cancels the preview; `prefers-reduced-motion` blocks the dive while the
+always-on highlight still applies; two distinct wheel-out gestures at the
+floor inside a nested child ascend to the parent, after which the redive
+lock blocks an immediate re-dive at the same node until a fresh pointerdown;
+a Focus-driven semantic reveal never dives; and a plain (non-bundle) diagram
+never shows the toggle and treats `Z` as a no-op.
 
 For required browser, output and package evidence, follow
 [Contributing](../CONTRIBUTING.md#local-setup-and-verification).

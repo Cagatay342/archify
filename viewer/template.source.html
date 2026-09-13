@@ -1412,9 +1412,41 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       pointer-events: none;
     }
     .overview-map-feedback[hidden] { display: none; }
+    .archify-dive-status {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 13;
+      max-width: min(16rem, calc(100% - 2rem));
+      margin: 0;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid color-mix(in srgb, var(--frontend-stroke) 52%, var(--toolbar-border));
+      border-radius: 0.5rem;
+      background: var(--toolbar-menu-bg);
+      color: var(--toolbar-text);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      font-size: 0.62rem;
+      line-height: 1.35;
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+    /* Stays mounted (never [hidden]) so aria-live text changes are
+       reliably announced by assistive tech; collapses to zero visual
+       footprint when empty instead of being removed from the a11y tree. */
+    .archify-dive-status:empty {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    html[data-embed="true"] .archify-dive-status { display: none; }
     .focus-chip[data-radar-yielded="true"] { display: none !important; }
     .diagram-nav #btn-route-probe[aria-pressed="true"] {
       color: var(--backend-stroke);
+      background: var(--toolbar-hover);
+    }
+    .diagram-nav #btn-drilldown-dive[aria-pressed="true"] {
+      color: var(--frontend-stroke);
       background: var(--toolbar-hover);
     }
     .diagram-nav #btn-semantic-lens[aria-expanded="true"],
@@ -4365,6 +4397,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       stroke: currentColor;
       stroke-width: 1;
     }
+    /* Belirginleştirme: always on, independent of the zoom-dive toggle.
+       detail-level "full" is the camera's own >=1.75 scale (or semantic
+       mode) threshold, written on .diagram-container by viewer-camera.js
+       apply() — never mirrored onto html for this purpose. */
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark {
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.22);
+    }
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark rect,
+    .diagram-container[data-detail-level="full"] .archify-drilldown-mark path {
+      stroke-width: 1.8;
+    }
+    .diagram-container[data-detail-level="full"] #btn-drilldown-descend:not([hidden]) {
+      border: 1px solid var(--frontend-stroke);
+      border-radius: 0.35rem;
+      color: var(--frontend-stroke);
+    }
+    /* Deliberately NOT "svg [data-node-id]…" — export.js's own CSS
+       harvest (serializeSvg's hostStyle) copies any rule whose selector
+       list starts with "svg" into the exported/downloaded SVG's embedded
+       style, which would add new bytes to canonical export output even
+       though the attribute itself is always stripped by export cleanup.
+       ".diagram-container …" reaches the same live nodes (the SVG is
+       always .diagram-container's direct child) without matching that
+       harvest, keeping export byte-identical. */
+    .diagram-container [data-node-id][data-dive-preview="true"] > rect:last-of-type {
+      stroke: var(--frontend-stroke);
+      stroke-width: 2.4;
+      stroke-dasharray: 4 3;
+    }
     svg[data-locate-active] [data-node-id] { opacity: 0.13; }
     svg[data-locate-active] [data-node-id][data-locate-state="touched"] { opacity: 1; }
     svg[data-locate-active] [data-node-id][data-locate-state="stale"] { opacity: 1; }
@@ -5612,12 +5675,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="overview-map-hint" aria-hidden="true"><span>{{i18n:viewer.radar.click}}</span><span>{{i18n:viewer.radar.drag}}</span></div>
       </div>
       <p class="overview-map-feedback no-print" id="overview-map-feedback" role="status" aria-live="polite" hidden>{{i18n:viewer.radar.space}}</p>
+      <p class="archify-dive-status no-print" id="archify-dive-status" role="status" aria-live="polite"></p>
       <div class="diagram-nav no-print" role="toolbar" aria-label="{{i18n:viewer.nav.controls}}">
         <button id="btn-route-probe" type="button" aria-label="{{i18n:viewer.nav.route}}" aria-pressed="false" aria-controls="route-probe" title="{{i18n:viewer.nav.route.title}}">{{i18n:viewer.nav.route.short}}</button>
         <button id="btn-overview-map" type="button" aria-label="{{i18n:viewer.nav.radar}}" aria-expanded="false" aria-controls="overview-map" title="{{i18n:viewer.nav.radar.title}}">{{i18n:viewer.nav.radar.short}}</button>
         <button id="btn-semantic-lens" type="button" aria-label="{{i18n:viewer.nav.lens}}" aria-haspopup="dialog" aria-expanded="false" aria-pressed="false" aria-controls="semantic-lens" title="{{i18n:viewer.nav.lens.title}}">{{i18n:viewer.nav.lens.short}}</button>
         <button id="btn-node-finder" type="button" aria-label="{{i18n:viewer.nav.find}}" aria-haspopup="dialog" aria-expanded="false" aria-controls="node-finder" title="{{i18n:viewer.nav.find.title}}" data-node-finder-trigger><span class="diagram-nav-icon find" aria-hidden="true"></span></button>
         <button id="btn-diagram-guide" type="button" aria-label="{{i18n:viewer.nav.guide}}" aria-haspopup="dialog" aria-expanded="false" aria-controls="diagram-guide" title="{{i18n:viewer.nav.guide.title}}"><span class="diagram-nav-icon guide" aria-hidden="true"></span></button>
+        <button id="btn-drilldown-dive" data-view="dive" type="button" hidden aria-pressed="false" aria-label="{{i18n:viewer.nav.dive}}" title="{{i18n:viewer.nav.dive.title}}">{{i18n:viewer.nav.dive.short}}</button>
         <button data-view="out" type="button" aria-label="{{i18n:viewer.nav.zoomOut}}" title="{{i18n:viewer.nav.zoomOut.title}}"><span class="diagram-nav-icon minus" aria-hidden="true"></span></button>
         <button data-view="reset" type="button" aria-label="{{i18n:viewer.nav.reset}}" title="{{i18n:viewer.nav.reset.title}}"><span class="diagram-nav-detail" data-view-detail hidden>{{i18n:viewer.nav.read}}</span><span class="diagram-nav-percent" data-view-percent>100%</span></button>
         <button data-view="in" type="button" aria-label="{{i18n:viewer.nav.zoomIn}}" title="{{i18n:viewer.nav.zoomIn.title}}"><span class="diagram-nav-icon plus" aria-hidden="true"></span></button>
@@ -7064,6 +7129,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           applyLocate(svg, data.nodes);
           return;
         }
+        // Small hook for Faz 3b's zoom-dive: hands the toggle preference
+        // down through this same validated hello/session channel (the
+        // only path a file:// child has, since it cannot share the
+        // parent's localStorage). Session-gated like every other message
+        // here; the actual preference state lives in Archify.dive, not here.
+        if (data.type === 'archify:dive-pref') {
+          if (typeof data.session !== 'number' || data.session !== helloSession) return;
+          if (Archify.dive && typeof Archify.dive.receivePreference === 'function') {
+            Archify.dive.receivePreference(!!data.enabled);
+          }
+          return;
+        }
         if (data.type === 'archify:drilldown-ascend-request') {
           if (typeof data.toDepth !== 'number' || !isFinite(data.toDepth) || data.toDepth < 0) return;
           if (typeof data.session !== 'number' || data.session !== helloSession) return;
@@ -7187,9 +7264,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         ascendTo: ascendTo,
         closeInnermost: closeInnermost,
         escapeToParent: escapeToParent,
-        syncPassport: syncPassport
+        syncPassport: syncPassport,
+        // Faz 3b hook: the session number of the currently-open direct
+        // child's handshake (or null), so dive.js can address exactly that
+        // frame/session for its own archify:dive-pref message without
+        // reaching into this closure's private `current`.
+        activeChildSession: function () { return current ? current.session : null; }
       };
     })();
+
+    /* ARCHIFY:DIVE */
 
     /* ============================================================
        Global keyboard shortcuts
@@ -7201,6 +7285,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
          M -> toggle Semantic Radar
          L -> toggle Semantic Lens
          R -> start/clear Route Probe
+         Z -> toggle opt-in zoom-dive
          / -> open node finder or the active route endpoint picker
          + / - -> zoom, 0 -> reset view
          Escape -> clear temporary trace/focus/view first, then exit presentation
@@ -7247,6 +7332,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         Archify.routeProbe.toggle({ focusNode: true });
+      } else if ((e.key === 'z' || e.key === 'Z') && !e.repeat
+        && !(t && (t.tagName === 'SELECT' || t.getAttribute('role') === 'textbox'))) {
+        e.preventDefault();
+        if (Archify.dive && Archify.dive.toggle) Archify.dive.toggle();
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         Archify.view.zoomIn();

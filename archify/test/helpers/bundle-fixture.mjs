@@ -8,9 +8,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const skillRoot = path.resolve(__dirname, '../..');
 const specsDir = path.join(skillRoot, 'test/fixtures/bundle-checkout');
 const deepSpecsDir = path.join(skillRoot, 'test/fixtures/bundle-checkout-deep');
+const diveSpecsDir = path.join(skillRoot, 'test/fixtures/bundle-dive');
 const cli = path.join(skillRoot, 'bin/archify.mjs');
 const SPEC_FILES = ['checkout-platform.json', 'payments.json', 'ledger-flow.json'];
 const DEEP_SPEC_FILES = [...SPEC_FILES, 'settlement.json'];
+const DIVE_SPEC_FILES = ['entry.json', 'middle.json', 'leaf.json'];
 
 const staged = new Set();
 
@@ -25,11 +27,11 @@ function runCli(args) {
   return result;
 }
 
-export function stageBundleFixture({ prefix = 'archify-bundle-fixture-', deep = false } = {}) {
+export function stageBundleFixture({ prefix = 'archify-bundle-fixture-', deep = false, fixture = 'checkout' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   staged.add(dir);
-  const sourceDir = deep ? deepSpecsDir : specsDir;
-  const specFiles = deep ? DEEP_SPEC_FILES : SPEC_FILES;
+  const sourceDir = fixture === 'dive' ? diveSpecsDir : deep ? deepSpecsDir : specsDir;
+  const specFiles = fixture === 'dive' ? DIVE_SPEC_FILES : deep ? DEEP_SPEC_FILES : SPEC_FILES;
   for (const name of specFiles) {
     fs.copyFileSync(path.join(sourceDir, name), path.join(dir, name));
   }

@@ -7,6 +7,7 @@ Read this only when the user asks for a reader-facing capability. Ordinary gener
 - Diagram Guide lists current actions and shortcuts.
 - Reading Depth starts at READ at the default 100% scale, reveals FULL detail at 175%, and falls back to MAP only below 100%. Focus, story, route, and semantic interactions reveal their exact facts at any scale.
 - Mouse wheel and two-finger trackpad/touch pinch zoom continuously around the pointer or gesture midpoint, alongside the existing `+`/`-`/`0` controls; Reading Depth and the 1–3 zoom range are unaffected.
+- In a drilldown bundle, a reader-controlled `Z` toggle (default off) can turn manual zoom past scale 2.5 into an automatic descend, with a visible dwell and reduced-motion/semantic-camera exclusions; the drilldown-mark highlight at full detail is always on regardless of the toggle. See `archify/references/drilldown-bundles.md` "Reader behavior".
 - Semantic Lens summarizes selected node/relationship kinds without changing authored geometry.
 - Intent Trace previews a fine-pointer or keyboard target before committed focus.
 - Node Finder searches labels and stable IDs.

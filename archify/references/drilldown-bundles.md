@@ -13,6 +13,8 @@ returning restores the parent's exact geometry and scroll position.
 
 Use a bundle when one component of a map has enough internal structure to deserve its own diagram
 and the twelve-node cap makes inlining it dishonest. Keep a single diagram when the detail fits.
+A whole-repository or whole-system map defaults to a bundle authored outside-in (`SKILL.md`
+"Repository maps: recursive drilldown bundles"); each child must pass that section's decomposition test.
 Depth ranges from two levels up to eight; a child can itself declare its own drilldowns and become
 a parent, so the whole bundle forms a tree rooted at the entry. Three to four levels is typical —
 each extra level is a full nested viewer document, so go deeper only when the structure genuinely
